@@ -2,6 +2,21 @@
 
 ***
 
+21.01.2026
+
+### Getting to know the tool
+
+
+Last time I left on after initializing the new flutter app and looked up the tools used on flutter development.
+
+Flutter sdk seems intuitive, but the official quick start guide was weird to say at least. The instructions doesn't say a thing on anything else than installing and using VS Code, despite they having a perfectly fine CLI tool that is easy to use.
+Kinda same as you would be in a market for a new car and start looking into Mercedes-Benz and the dealer tells you to go get a taxi ride as they probably drive a new Mercedes.
+
+Delving deeper in to the ecosystem here I see handy tools in the web interface DevTools. It brings comfort in knowing that the sdk provides niceties from the web dev into play.
+
+
+***
+
 20.01.2026
 
 ### Initialization
