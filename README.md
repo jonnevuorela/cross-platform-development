@@ -2,6 +2,17 @@
 
 ***
 
+22.01.2026
+
+### Getting the ropes
+
+Today I just went in on the demo app and tried out what happens on the things and how to add content of my own. I found the similiarity to the Kotlin android application development and that helped. The framework seems to provide nice set of tools to make things happen but way less verbose than in the Kotlin code.
+For example the simple and good looking page navigator was way easier to craft.
+
+I also tried a new agentic AI neovim plugin tool, which allows to run agent inline from the editor by selecting the relevant context by VIM visual mode. It is kinda more lightweight than something like opencode that runs freely on context of the whole project. The zig zag drawing page that was created today was created by this way using Grok code fast 1 model.
+
+***
+
 21.01.2026
 
 ### Getting to know the tool
@@ -28,6 +39,3 @@ Much like the frameworks I mentioned earlier, many other cross-platforms also te
 So the most interesting technology to me on the table is the one that was kinda default already on the course, Flutter.
 Flutter seems most versatile tool to me since it's capabilities in making most native apps out of the options and yet still compiling also to web format. Also since I do have tried out the two second most interesting options already, I figured why not. 
 
-
-
-***
