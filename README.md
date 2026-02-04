@@ -11,6 +11,8 @@ For example the simple and good looking page navigator was way easier to craft.
 
 I also tried a new agentic AI neovim plugin tool, which allows to run agent inline from the editor by selecting the relevant context by VIM visual mode. It is kinda more lightweight than something like opencode that runs freely on context of the whole project. The zig zag drawing page that was created today was created by this way using Grok code fast 1 model.
 
+![](./journal/media/zigzagdemo.GIF)
+
 ***
 
 21.01.2026
