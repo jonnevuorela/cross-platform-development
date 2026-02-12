@@ -1,6 +1,10 @@
 # Learning journal of Cross-platform mobile application development course
 
 ***
+12.2.2026
+
+Attended to the lecture today and we went trough following the Dart tutorial. The tutorial felt really basic and at first it wasnt giving anything new to me.
+***
 
 22.01.2026
 
