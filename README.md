@@ -1,6 +1,25 @@
 # Learning journal of Cross-platform mobile application development course
 
 ***
+24.3.2026
+
+### State management and ecosystem
+
+After a long break between the lectures, a refresher in flutter was in place.
+While having the lecture on my second monitor where subject was orbiting around UI widgets, 
+I spent most of my time browsing the pub.dev page to see what are the popular packages people use with the flutter.
+This gave me ideas and insight on what I can implement easily by importing the library to the project instead of building it myself or leaving the feature out of the scope.
+I even found few packages which I saved for future projects where I might use flutter to build it.
+
+The UI stuff was very helpful since I feel that you cant really utilize the knowledge on plain web technologies with mobile apps too much, so it's great to see whats out there.
+I feel that the only way to get around with a new frontend framework effectively is to browse the docs, which I haven't got around yet.
+
+The insight for state management and flutters way to use the state was also very helpful. I got a better understanding on usefulness of a app state.
+
+
+***
+
+***
 12.2.2026
 
 Attended to the lecture today and we went trough following the Dart tutorial. The tutorial felt really basic and at first it wasnt giving anything new to me.
