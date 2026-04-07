@@ -1,11 +1,27 @@
 import 'dart:core';
 
+import 'package:app/provider.dart';
 import 'package:flutter/material.dart';
 
+import 'counter.dart';
 import 'drawing.dart';
 
 void main() {
-  runApp(const MyApp());
+  runApp(
+    Provider(
+      notifier: CounterNotifier(CounterModel(username: "Gorre")),
+      child: const MyApp(),
+    ),
+  );
+}
+
+class MainPage extends StatefulWidget {
+  final String title;
+
+  const MainPage({super.key, required this.title});
+
+  @override
+  State<MainPage> createState() => _MainPageState();
 }
 
 class MyApp extends StatelessWidget {
@@ -16,20 +32,11 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'Flutter Demo',
       theme: ThemeData(
-       colorScheme: ColorScheme.fromSeed(seedColor: Colors.amberAccent),
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.amberAccent),
       ),
       home: const MainPage(title: 'Flutter App Home Page'),
     );
   }
-}
-
-class MainPage extends StatefulWidget {
-  const MainPage({super.key, required this.title});
-
-  final String title;
-
-  @override
-  State<MainPage> createState() => _MainPageState();
 }
 
 class _MainPageState extends State<MainPage> {
@@ -41,47 +48,29 @@ class _MainPageState extends State<MainPage> {
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
 
+    final counterNotifier = Provider.of<CounterNotifier>(context);
+
     return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-
-        title: Text(pageTitles[currentPageIndex]),
-      ),
- 
-      bottomNavigationBar: NavigationBar(
-        onDestinationSelected: (int index) {
-          setState(() {
-            currentPageIndex = index;
-          });
-        },
-        indicatorColor: Colors.amber,
-        selectedIndex: currentPageIndex,
-        destinations: const <Widget>[
-          NavigationDestination(
-            selectedIcon: Icon(Icons.home),
-            icon: Icon(Icons.home_outlined),
-            label: 'Home',
-          ),
-          NavigationDestination(icon: Icon(Icons.brush_sharp), label: 'Draw'),
-        ],
-      ),
-
-      body: <Widget>[
-        /// Home page
-        Card(
-          shadowColor: Colors.transparent,
-          margin: const EdgeInsets.all(8.0),
-          child: SizedBox.expand(
-            child: Center(
-              child: Text('Home page', style: theme.textTheme.titleLarge),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: <Widget>[
+            Text(
+              '${counterNotifier.value.username} has pushed the button this many times:',
             ),
-          ),
+            Text(
+              '${counterNotifier.value.counter}',
+              style: Theme.of(context).textTheme.headlineMedium,
+            ),
+          ],
         ),
-
-        /// Drawing page
-        const DrawingPage(title: 'Drawing Page'),
-
-      ][currentPageIndex],
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => counterNotifier.increment(),
+        child: const Icon(Icons.add),
+      ),
     );
+
+
   }
 }
