@@ -1,6 +1,15 @@
 # Learning journal of Cross-platform mobile application development course
 
 ***
+7.4.2026
+
+I finished following the state manager building and after that I moved on to implement the bloc to the project.
+Bloc seems a great tool managaing the state of the application and it has solid idea behind it which resonates with me.
+I read trough the introduction part of the bloc docs and followed the trough the code examples of counter and github search.
+It really seems like a library I would go with when working on a flutter app.
+
+![](./journal/media/statemanagementdemo.gif)
+***
 24.3.2026
 
 ### State management and ecosystem
