@@ -14,7 +14,7 @@ EventTransformer<Event> debounce<Event>(Duration duration) {
 class GithubSearchBloc extends Bloc<GithubSearchEvent, GithubSearchState> {
   GithubSearchBloc({required GithubRepository githubRepository})
     : _githubRepository = githubRepository,
-      super(SearchStateEmpty()) {
+      super(SearchStateInitial()) {
     on<TextChanged>(_onTextChanged, transformer: debounce(_duration));
   }
 
@@ -26,7 +26,7 @@ class GithubSearchBloc extends Bloc<GithubSearchEvent, GithubSearchState> {
   ) async {
     final searchTerm = event.text;
 
-    if (searchTerm.isEmpty) return emit(SearchStateEmpty());
+    if (searchTerm.isEmpty) return emit(SearchStateInitial());
 
     emit(SearchStateLoading());
 

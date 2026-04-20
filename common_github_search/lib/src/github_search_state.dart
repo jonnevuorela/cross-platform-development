@@ -8,7 +8,7 @@ sealed class GithubSearchState extends Equatable {
   List<Object> get props => [];
 }
 
-final class SearchStateEmpty extends GithubSearchState {}
+final class SearchStateInitial extends GithubSearchState {}
 
 final class SearchStateLoading extends GithubSearchState {}
 
