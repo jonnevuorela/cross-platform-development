@@ -1,6 +1,26 @@
 # Learning journal of Cross-platform mobile application development course
 
 ***
+20.4.2026
+
+### Refactoring the architecture
+
+I started to form the architecture more towards MVVM, but keep the bloc as domain layer orchestrator. Bloc works kinda like the use cases on a pure MVVM structure. I created extra layer on the presentation by adding a view model for the displayed page, that handles all the business logic and the UI is completely freed from handling any business logic, thus enforcing the MVVM architecture.
+
+          App Layer                                Domain Layer                Data Layer     
+───────────────────────────────                ─────────────────────        ──────────────────
+┌─────────┐       ┌───────────┐                ┌───────────────────┐           ┌───────┐      
+│  Page   │       │View Model │                │  Bloc             ├──────────►│  API  │      
+│         │       │           │    states      │    ┌────────┐     │           └───────┘      
+│         │◄──────┼───────────┼────────────────┼─── │cache,  │     │                          
+│         │       │           │                │    │repo,   │     │                          
+│         │       │           │                │    │etc..   │     │                          
+│         │       │           │    events      │    └────────┘     │                          
+│    ─────┼───────┼───────────┼───────────────►│                   │                          
+└─────────┘       └───────────┘                └───────────────────┘                          
+
+***
+
 13.4.2026
 
 ### About architecture
