@@ -1,12 +1,28 @@
 # Learning journal of Cross-platform mobile application development course
 
 ***
+13.4.2026
+
+### About architecture
+
+Reading into compass apps code the first tough is, its obviously well structured. 
+
+[https://github.com/flutter/samples/tree/main/compass_app](https://github.com/flutter/samples/tree/main/compass_app)
+
+The vastness of callable and returnable mock data makes the dev experience close to what the api would return. Although I didnt catch any flutter specific here, just about the same I have for example done in past for some projects but not with flutter.
+
+The model factory with input of json seems ergonomic way to handle model creation for the views. No need to manually write the parsing ourselves. I guess this is where the frameworks shine the most. They provide tooling to ease the development, but you have to be familiar with it to know that the tools for the job already exists in the framework.
+
+The use cases were somewhat new concept to me. I’ve seen them, but never really thought about them much. Having an orchestration layer that handles all the moving parts fits clean architecture ideology well. By containing this job in its own layer, business logic moves out of the UI and into a dedicated place.
+
+***
 7.4.2026
 
 I finished following the state manager building and after that I moved on to implement the bloc to the project.
 Bloc seems a great tool managaing the state of the application and it has solid idea behind it which resonates with me.
 I read trough the introduction part of the bloc docs and followed the trough the code examples of counter and github search.
 It really seems like a library I would go with when working on a flutter app.
+I think this satisfies the L5 subject as we do now HTTP POST on a API with async item loading.
 
 ![](./journal/media/statemanagementdemo.gif)
 ***
