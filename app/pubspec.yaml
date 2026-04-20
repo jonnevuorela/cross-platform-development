@@ -35,6 +35,7 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
   flutter_bloc: ^9.1.1
+  provider: ^6.1.5
   common_github_search:
     path: ../common_github_search
   url_launcher: ^6.0.0
