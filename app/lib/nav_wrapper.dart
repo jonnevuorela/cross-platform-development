@@ -5,7 +5,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'counter_bloc.dart';
 import 'counter_page.dart';
 import 'drawing.dart';
-import 'search_form.dart';
+import 'search/search_page.dart';
 
 class NavWrapper extends StatefulWidget {
   const NavWrapper({super.key});
@@ -31,15 +31,7 @@ class _NavWrapperState extends State<NavWrapper> {
             index: _currentIndex,
             children: [
               BlocProvider(create: (_) => CounterBloc(), child: CounterPage()),
-              BlocProvider(
-                create: (context) => GithubSearchBloc(
-                  githubRepository: context.read<GithubRepository>(),
-                ),
-                child: Scaffold(
-                  appBar: AppBar(title: Text('GitHub Search')),
-                  body: SearchForm(),
-                ),
-              ),
+              const SearchPage(),
               const DrawingPage(title: 'Drawing'),
             ],
           ),
