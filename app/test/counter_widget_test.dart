@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('CounterPage', () {
+    print('======== Counter Page Tests ========');
     var counter = BlocProvider(
       create: (_) => CounterBloc(),
       child: MaterialApp(home: CounterPage()),
