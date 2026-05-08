@@ -1,12 +1,71 @@
 import 'package:app/counter_bloc.dart';
 import 'package:app/counter_page.dart';
 import 'package:app/drawing.dart';
+import 'package:app/search/search_page.dart';
+import 'package:common_github_search/common_github_search.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
- group('CounterPage', () {
+  group('SearchPage', () {
+    late Widget search;
+
+    setUp(() {
+      search = RepositoryProvider(
+        create: (_) => GithubRepository(),
+        child: MaterialApp(home: const SearchPage()),
+      );
+      print('→ Starting a new SearchPage test');
+    });
+
+    testWidgets('Search smoke test', (WidgetTester tester) async {
+      await tester.pumpWidget(search);
+
+      expect(find.text('Please enter a term to begin'), findsOne);
+      expect(find.byType(TextField), findsOne);
+    });
+
+    testWidgets('Search type test', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(search);
+
+      final textField = find.byType(TextField);
+
+      await tester.enterText(textField, "flutter");
+
+      // wait for debounce
+      await tester.pump(const Duration(milliseconds: 350));
+      await tester.pumpAndSettle();
+
+      expect(find.text('flutter'), findsOneWidget);
+    });
+
+    testWidgets('Clear search test', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(search);
+
+      final textField = find.byType(TextField);
+
+      await tester.enterText(textField, "flutter");
+
+      await tester.pump(const Duration(milliseconds: 350));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byIcon(Icons.clear));
+
+      await tester.pump(const Duration(milliseconds: 350));
+      await tester.pumpAndSettle();
+
+      expect(find.text(''), findsOneWidget);
+    });
+ 
+ 
+  });
+
+  group('CounterPage', () {
     late Widget counter;
 
     setUp(() {
