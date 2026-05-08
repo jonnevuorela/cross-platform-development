@@ -9,10 +9,10 @@ class DrawingPage extends StatefulWidget {
   final String title;
 
   @override
-  State<DrawingPage> createState() => _DrawingPageState();
+  State<DrawingPage> createState() => DrawingPageState();
 }
 
-class _DrawingPageState extends State<DrawingPage> {
+class DrawingPageState extends State<DrawingPage> {
   List<Offset> points = [];
   final Random _random = Random();
   final int zigs = 10;
