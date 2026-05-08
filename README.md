@@ -49,7 +49,7 @@ Change { currentState: 0, nextState: 0 }
 00:07 +9: All tests passed!
 ```
 
-All of the widget tests of each tree pages are under the same file and I think one file suffice for each field of testing in this sized project.
+All of the widget tests of each three pages are under the same file and I think one file suffice for each field of testing in this sized project.
 
 ``` dart
 import 'package:app/counter_bloc.dart';
