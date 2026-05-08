@@ -1,6 +1,230 @@
 # Learning journal of Cross-platform mobile application development course
 
 ***
+8.5.2026
+
+### Testing UI
+
+After skimming trough the links from moodle about testing, I went straight into the project app and tried out the boiler plate tests. From there on I started to extend the existing setup for the counter app.
+
+Nothing really works intuitively, but I found that LLMs provides working example snippets way faster and easier than trying to search ready example from stackoverflow or other ancient platform. The problems and gymnasts that you usually try to do on the Flutters widget tests, are often quite specific, so they are hard to find the old way. In comes the further most advanced search machines of LLMs.
+
+Tests are something that always feels lame when you think about that you have to start writing them, but once in place and every test runs successfully and as intended, it makes you feel better, the development cycle is more robust now, you can trust more the machinery of your CI pipeline and what comes out from it.
+
+```bash
+$  flutter test
+00:06 +0: SearchPage Search smoke test
+→ Starting a new SearchPage test
+00:07 +1: SearchPage Search type test
+→ Starting a new SearchPage test
+00:07 +2: SearchPage Clear search test
+→ Starting a new SearchPage test
+00:07 +3: CounterPage Counter smoke test
+→ Starting a new CounterPage test
+00:07 +4: CounterPage Counter increment test
+→ Starting a new CounterPage test
+Instance of 'CounterIncrementPressed'
+Transition { currentState: 0, event: Instance of 'CounterIncrementPressed', nextState: 1 }
+Change { currentState: 0, nextState: 1 }
+Instance of 'CounterIncrementPressed'
+Transition { currentState: 1, event: Instance of 'CounterIncrementPressed', nextState: 2 }
+Change { currentState: 1, nextState: 2 }
+00:07 +5: CounterPage Counter decrement test
+→ Starting a new CounterPage test
+Instance of 'CounterIncrementPressed'
+Transition { currentState: 0, event: Instance of 'CounterIncrementPressed', nextState: 1 }
+Change { currentState: 0, nextState: 1 }
+Instance of 'CounterDecrementPressed'
+Transition { currentState: 1, event: Instance of 'CounterDecrementPressed', nextState: 0 }
+Change { currentState: 1, nextState: 0 }
+00:07 +6: CounterPage Counter decrement constraint test
+→ Starting a new CounterPage test
+Instance of 'CounterDecrementPressed'
+Transition { currentState: 0, event: Instance of 'CounterDecrementPressed', nextState: 0 }
+Change { currentState: 0, nextState: 0 }
+00:07 +7: DrawingPage Drawing Page smoke test
+→ Starting a new DrawingPage test
+00:07 +8: DrawingPage adds a point to drawing
+→ Starting a new DrawingPage test
+00:07 +9: All tests passed!
+```
+
+All of the widget tests of each tree pages are under the same file and I think one file suffice for each field of testing in this sized project.
+
+``` dart
+import 'package:app/counter_bloc.dart';
+import 'package:app/counter_page.dart';
+import 'package:app/drawing.dart';
+import 'package:app/search/search_page.dart';
+import 'package:common_github_search/common_github_search.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+void main() {
+  group('SearchPage', () {
+    late Widget search;
+
+    setUp(() {
+      search = RepositoryProvider(
+        create: (_) => GithubRepository(),
+        child: MaterialApp(home: const SearchPage()),
+      );
+      print('→ Starting a new SearchPage test');
+    });
+
+    testWidgets('Search smoke test', (WidgetTester tester) async {
+      await tester.pumpWidget(search);
+
+      expect(find.text('Please enter a term to begin'), findsOne);
+      expect(find.byType(TextField), findsOne);
+    });
+
+    testWidgets('Search type test', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(search);
+
+      final textField = find.byType(TextField);
+
+      await tester.enterText(textField, "flutter");
+
+      // wait for debounce
+      await tester.pump(const Duration(milliseconds: 350));
+      await tester.pumpAndSettle();
+
+      expect(find.text('flutter'), findsOneWidget);
+    });
+
+    testWidgets('Clear search test', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(search);
+
+      final textField = find.byType(TextField);
+
+      await tester.enterText(textField, "flutter");
+
+      await tester.pump(const Duration(milliseconds: 350));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byIcon(Icons.clear));
+
+      await tester.pump(const Duration(milliseconds: 350));
+      await tester.pumpAndSettle();
+
+      expect(find.text(''), findsOneWidget);
+    });
+
+
+  });
+
+  group('CounterPage', () {
+    late Widget counter;
+
+    setUp(() {
+      counter = BlocProvider(
+        create: (_) => CounterBloc(),
+        child: MaterialApp(home: CounterPage()),
+      );
+      print('→ Starting a new CounterPage test');
+    });
+
+    testWidgets('Counter smoke test', (WidgetTester tester) async {
+      await tester.pumpWidget(counter);
+
+      expect(find.text('0'), findsOneWidget);
+      expect(find.text('1'), findsNothing);
+    });
+
+    testWidgets('Counter increment test', (WidgetTester tester) async {
+      await tester.pumpWidget(counter);
+
+      await tester.tap(find.byIcon(Icons.add));
+      await tester.pump();
+
+      expect(find.text('0'), findsNothing);
+      expect(find.text('1'), findsOneWidget);
+
+      await tester.tap(find.byIcon(Icons.add));
+      await tester.pump();
+
+      expect(find.text('0'), findsNothing);
+      expect(find.text('1'), findsNothing);
+      expect(find.text('2'), findsOneWidget);
+    });
+
+    testWidgets('Counter decrement test', (WidgetTester tester) async {
+      await tester.pumpWidget(counter);
+
+      expect(find.text('0'), findsOneWidget);
+      expect(find.text('1'), findsNothing);
+
+      await tester.tap(find.byIcon(Icons.add));
+      await tester.pump();
+
+      expect(find.text('0'), findsNothing);
+      expect(find.text('1'), findsOneWidget);
+
+      await tester.tap(find.byIcon(Icons.remove));
+      await tester.pump();
+
+      expect(find.text('1'), findsNothing);
+      expect(find.text('0'), findsOneWidget);
+    });
+
+    testWidgets('Counter decrement constraint test', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(counter);
+
+      expect(find.text('0'), findsOneWidget);
+      expect(find.text('1'), findsNothing);
+
+      await tester.tap(find.byIcon(Icons.remove));
+      await tester.pump();
+
+      expect(find.text('1'), findsNothing);
+      expect(find.text('-1'), findsNothing);
+      expect(find.text('0'), findsOneWidget);
+    });
+  });
+
+  group('DrawingPage', () {
+    late Widget drawing;
+
+    setUp(() {
+      drawing = MaterialApp(home: const DrawingPage(title: 'Drawing'));
+      print('→ Starting a new DrawingPage test');
+    });
+
+    testWidgets('Drawing Page smoke test', (WidgetTester tester) async {
+      await tester.pumpWidget(drawing);
+
+      final state = tester.state<DrawingPageState>(find.byType(DrawingPage));
+
+      expect(find.byIcon(Icons.brush), findsOneWidget);
+      expect(state.points.length, 0);
+    });
+
+    testWidgets('adds a point to drawing', (WidgetTester tester) async {
+      await tester.pumpWidget(drawing);
+
+      final state = tester.state<DrawingPageState>(find.byType(DrawingPage));
+
+      await tester.tap(find.byIcon(Icons.brush));
+      await tester.pump();
+
+      expect(state.points.length, 1);
+    });
+  });
+}
+```
+
+
+
+***
+
 20.4.2026
 
 ### Refactoring the architecture
@@ -64,7 +288,6 @@ The insight for state management and flutters way to use the state was also very
 
 ***
 
-***
 12.2.2026
 
 Attended to the lecture today and we went trough following the Dart tutorial. The tutorial felt really basic and at first it wasnt giving anything new to me.
