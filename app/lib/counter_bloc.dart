@@ -8,7 +8,9 @@ final class CounterIncrementPressed extends CounterEvent {}
 final class CounterDecrementPressed extends CounterEvent {}
 
 class CounterBloc extends Bloc<CounterEvent, int> {
-  CounterBloc() : super(0) {
+  final bool enableLogging;
+
+  CounterBloc({this.enableLogging = true}) : super(0) {
     on<CounterIncrementPressed>((event, emit) => emit(state + 1));
     on<CounterDecrementPressed>((event, emit) {
       if (state > 0) {
@@ -22,19 +24,19 @@ class CounterBloc extends Bloc<CounterEvent, int> {
   @override
   void onEvent(CounterEvent event) {
     super.onEvent(event);
-    print(event);
+    if (enableLogging) print(event);
   }
 
   @override
   void onChange(Change<int> change) {
     super.onChange(change);
-    print(change);
+    if (enableLogging) print(change);
   }
 
   @override
   void onTransition(Transition<CounterEvent, int> transition) {
     super.onTransition(transition);
-    print(transition);
+    if (enableLogging) print(transition);
   }
 
   @override
