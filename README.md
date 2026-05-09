@@ -5,7 +5,7 @@
 
 ### Unit tests
 
-Bloc has its own packaging for testing bloc and they seem to have  it figured out too. Writing unit tests on blocs is a breeze and complex features can get robustly tested with ease.
+Bloc has its own package for testing bloc and they seem to have  it figured out too. Writing unit tests on blocs is a breeze and complex features can get robustly tested with ease.
 
 ```dart
 import 'package:mocktail/mocktail.dart';
