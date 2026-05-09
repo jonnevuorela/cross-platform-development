@@ -6,16 +6,20 @@ import 'package:common_github_search/common_github_search.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mocktail/mocktail.dart';
 
 void main() {
   group('SearchPage', () {
     late Widget search;
+    late MockGithubRepository mockRepo;
 
     setUp(() {
-      search = RepositoryProvider(
-        create: (_) => GithubRepository(),
+      mockRepo = MockGithubRepository(withMockData: true);
+      search = RepositoryProvider<GithubRepository>(
+        create: (_) => mockRepo,
         child: MaterialApp(home: const SearchPage()),
       );
+
       print('→ Starting a new SearchPage test');
     });
 
@@ -26,9 +30,7 @@ void main() {
       expect(find.byType(TextField), findsOne);
     });
 
-    testWidgets('Search type test', (
-      WidgetTester tester,
-    ) async {
+    testWidgets('Search type test', (WidgetTester tester) async {
       await tester.pumpWidget(search);
 
       final textField = find.byType(TextField);
@@ -42,9 +44,7 @@ void main() {
       expect(find.text('flutter'), findsOneWidget);
     });
 
-    testWidgets('Clear search test', (
-      WidgetTester tester,
-    ) async {
+    testWidgets('Clear search test', (WidgetTester tester) async {
       await tester.pumpWidget(search);
 
       final textField = find.byType(TextField);
@@ -61,8 +61,16 @@ void main() {
 
       expect(find.text(''), findsOneWidget);
     });
- 
- 
+
+    testWidgets('Shows loading and results correctly', (tester) async {
+      await tester.pumpWidget(search);
+
+      await tester.enterText(find.byType(TextField), 'flutter');
+      await tester.pumpAndSettle(const Duration(milliseconds: 400));
+
+      expect(find.byType(ListTile), findsAtLeast(1));
+      expect(find.text('flutter/flutter-0'), findsOneWidget);
+    });
   });
 
   group('CounterPage', () {
