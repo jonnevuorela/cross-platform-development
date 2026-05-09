@@ -8,7 +8,12 @@ import 'drawing.dart';
 import 'search/search_page.dart';
 
 class NavWrapper extends StatefulWidget {
-  const NavWrapper({super.key});
+  const NavWrapper({
+      super.key,
+      this.useMock = false
+      });
+
+  final bool useMock;
 
   @override
   State<NavWrapper> createState() => _NavWrapperState();
@@ -20,7 +25,9 @@ class _NavWrapperState extends State<NavWrapper> {
   @override
   Widget build(BuildContext context) {
     return RepositoryProvider(
-      create: (_) => GithubRepository(),
+      create: (_) => widget.useMock
+          ? MockGithubRepository(withMockData: true)
+          : GithubRepository(),
       dispose: (repository) => repository.dispose(),
       child: MaterialApp(
         theme: ThemeData(
