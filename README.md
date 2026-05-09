@@ -1,6 +1,106 @@
 # Learning journal of Cross-platform mobile application development course
 
 ***
+9.5.2026
+
+### Unit tests
+
+Bloc has its own packaging for testing bloc and they seem to have  it figured out too. Writing unit tests on blocs is a breeze and complex features can get robustly tested with ease.
+
+```dart
+import 'package:mocktail/mocktail.dart';
+
+import 'package:bloc_test/bloc_test.dart';
+import 'package:common_github_search/common_github_search.dart';
+import 'package:test/test.dart';
+
+void main() {
+  group(GithubSearchBloc, () {
+    late MockGithubRepository mockRepository;
+    late GithubSearchBloc search;
+
+    setUp(() {
+      mockRepository = MockGithubRepository();
+      search = GithubSearchBloc(githubRepository: mockRepository);
+      print('→ Starting a new GithubSearchBloc test');
+    });
+
+    tearDown(() => search.close());
+
+    blocTest(
+      'Search bloc smoke test',
+      build: () => search,
+      act: (search) => search.add(const TextChanged(text: '')),
+      expect: () => [isA<SearchStateInitial>()],
+      wait: const Duration(milliseconds: 350),
+    );
+
+    blocTest(
+      'Search bloc searching test',
+      build: () {
+        when(
+          () => mockRepository.search('flutter'),
+        ).thenAnswer((_) async => createMockSearchResult());
+
+        return search;
+      },
+      act: (search) => search.add(const TextChanged(text: 'flutter')),
+      expect: () => [isA<SearchStateLoading>(), isA<SearchStateSuccess>()],
+      wait: const Duration(milliseconds: 350),
+      verify: (_) {
+        verify(() => mockRepository.search('flutter')).called(1);
+      },
+    );
+
+    blocTest(
+      'Search bloc error handling test',
+      build: () {
+        when(
+          () => mockRepository.search('badterm'),
+        ).thenThrow(createMockSearchError(message: 'The error'));
+
+        return search;
+      },
+      act: (search) => search.add(const TextChanged(text: 'badterm')),
+      expect: () => [
+        isA<SearchStateLoading>(),
+        predicate<SearchStateError>((state) => state.error == 'The error'),
+      ],
+      wait: const Duration(milliseconds: 350),
+      verify: (_) => verify(() => mockRepository.search('badterm')).called(1),
+    );
+  });
+}
+```
+
+
+
+It truely amazes me when learning a high level language it always goes into "How do I implement this, probably some specific delegate function. Oh, there is a ready made solution to this."
+
+```dart
+when(() => {
+	.askedSomething()
+}).thenAnswer(() => Yes());
+```
+
+That is the whole point of high level languages though. In exchange for complex mess, you get great development speed once familiar with the tooling.
+
+To further extend the widget tests for the github search, I went and used the newly created mock repositories in the widget tests instead of real one. This allows me to actually now test the search entries being added to ui without actually calling the api in the tests. 
+
+To verify what the test should see, I added a env var flag to the  build to enable the mock repository instead of the real one. This way I can see for my self what the tests should see.
+
+```bash
+flutter run --dart-define=USE_MOCK=true
+```
+
+![](./journal/media/mock_data_demo.gif)
+
+I added a one new widget test for the search to validate that the app renders the search results after search.
+
+
+
+***
+
 8.5.2026
 
 ### Testing UI
