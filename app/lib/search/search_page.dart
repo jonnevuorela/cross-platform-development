@@ -15,19 +15,18 @@ class SearchPage extends StatelessWidget {
         create: (context) => GithubSearchBloc(
           githubRepository: context.read<GithubRepository>(),
         ),
-        child: Builder(builder: (context) {
-          return ChangeNotifierProvider(
-            create: (context) => GithubSearchViewModel(
-              bloc: context.read<GithubSearchBloc>(),
-            ),
-            child: Scaffold(
-              appBar: AppBar(title: Text('GitHub Search tool')),
-              body: Column(
-              children: [_SearchBar(), _SearchBody()],
+        child: Builder(
+          builder: (context) {
+            return ChangeNotifierProvider(
+              create: (context) =>
+                  GithubSearchViewModel(bloc: context.read<GithubSearchBloc>()),
+              child: Scaffold(
+                appBar: AppBar(title: Text('GitHub Search tool')),
+                body: Column(children: [_SearchBar(), _SearchBody()]),
               ),
-            ),
-          );
-        }),
+            );
+          },
+        ),
       ),
     );
   }
@@ -60,9 +59,7 @@ class _SearchBarState extends State<_SearchBar> {
       controller: _textController,
       autocorrect: false,
       onChanged: (text) {
-        _githubSearchViewModel.search(
-          text,
-        );
+        _githubSearchViewModel.search(text);
       },
       decoration: InputDecoration(
         prefixIcon: const Icon(Icons.search),
@@ -76,9 +73,9 @@ class _SearchBarState extends State<_SearchBar> {
     );
   }
 
-  void _onClearTapped(){
-      _textController.text = '';
-      _githubSearchViewModel.clearSearch();
+  void _onClearTapped() {
+    _textController.text = '';
+    _githubSearchViewModel.clearSearch();
   }
 }
 
@@ -127,7 +124,11 @@ class _SearchResultItem extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListTile(
       leading: CircleAvatar(
-        child: Image.network(item.owner.avatarUrl),
+        child: Image.network(
+          item.owner.avatarUrl,
+          errorBuilder: (context, error, stackTrace) =>
+              const Icon(Icons.person),
+        ),
       ),
       title: Text(item.fullName),
       onTap: () => launchUrl(Uri.parse(item.htmlUrl)),
