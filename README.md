@@ -1,6 +1,145 @@
 # Learning journal of Cross-platform mobile application development course
 
 ***
+12.5.2026
+
+### Integration test
+
+At this point only thing to add to the tests are integration test. We don't have as much to do on the integration tests as the actual purposeful usage of this app is quite simple. I figured that the one thing we could test on our app is the github search's http client and to call the actual API endpoint.
+
+As we generally don't want to run the integration test as often as the other test, I included a dart_test.yaml file with integration tag to the project, so I can easily exclude the integration test and run just the widget and unit tests.
+
+```dart
+@Tags(['integration'])
+library;
+
+import 'package:common_github_search/common_github_search.dart';
+import 'package:test/test.dart';
+
+void main() {
+  group('Search integration test', () {
+    late GithubClient client;
+
+    setUp(() {
+      client = GithubClient();
+      print('→ Starting a new search integration test');
+    });
+
+    tearDown(() => client.close());
+
+    test('real API returns search results for "flutter"', () async {
+      final results = await client.search('flutter');
+      expect(results.items, isNotEmpty);
+      expect(results.items.first.fullName, contains('flutter'));
+    });
+  });
+}
+```
+
+Tests run without integration tests.
+
+```bash
+$ flutter test --exclude-tags integration
+00:01 +0: /home/jonne/repos/cross-platform-development/app/test/widget_test.dart: SearchPage Search smoke test
+→ Starting a new SearchPage test
+00:02 +1: /home/jonne/repos/cross-platform-development/app/test/widget_test.dart: SearchPage Search type test
+→ Starting a new SearchPage test
+00:02 +2: /home/jonne/repos/cross-platform-development/app/test/widget_test.dart: SearchPage Clear search test
+→ Starting a new SearchPage test
+00:02 +3: /home/jonne/repos/cross-platform-development/app/test/widget_test.dart: SearchPage Shows loading and results correctly
+→ Starting a new SearchPage test
+00:02 +4: /home/jonne/repos/cross-platform-development/app/test/widget_test.dart: CounterPage Counter smoke test
+→ Starting a new CounterPage test
+00:02 +5: /home/jonne/repos/cross-platform-development/app/test/widget_test.dart: CounterPage Counter increment test
+→ Starting a new CounterPage test
+Instance of 'CounterIncrementPressed'
+Transition { currentState: 0, event: Instance of 'CounterIncrementPressed', nextState: 1 }
+Change { currentState: 0, nextState: 1 }
+Instance of 'CounterIncrementPressed'
+Transition { currentState: 1, event: Instance of 'CounterIncrementPressed', nextState: 2 }
+Change { currentState: 1, nextState: 2 }
+00:02 +6: /home/jonne/repos/cross-platform-development/app/test/widget_test.dart: CounterPage Counter decrement test
+→ Starting a new CounterPage test
+Instance of 'CounterIncrementPressed'
+Transition { currentState: 0, event: Instance of 'CounterIncrementPressed', nextState: 1 }
+Change { currentState: 0, nextState: 1 }
+Instance of 'CounterDecrementPressed'
+Transition { currentState: 1, event: Instance of 'CounterDecrementPressed', nextState: 0 }
+Change { currentState: 1, nextState: 0 }
+00:02 +7: /home/jonne/repos/cross-platform-development/app/test/widget_test.dart: CounterPage Counter decrement constraint test
+→ Starting a new CounterPage test
+Instance of 'CounterDecrementPressed'
+Transition { currentState: 0, event: Instance of 'CounterDecrementPressed', nextState: 0 }
+Change { currentState: 0, nextState: 0 }
+00:02 +8: /home/jonne/repos/cross-platform-development/app/test/widget_test.dart: DrawingPage Drawing Page smoke test
+→ Starting a new DrawingPage test
+00:02 +9: /home/jonne/repos/cross-platform-development/app/test/widget_test.dart: DrawingPage adds a point to drawing
+→ Starting a new DrawingPage test
+00:02 +10: All tests passed!
+
+```
+
+run only integration tests.
+
+```bash
+$ flutter test --tags integration
+00:01 +0: /home/jonne/repos/cross-platform-development/app/test/integration_test.dart: Search integration test real API returns search results for "flutter"
+→ Starting a new search integration test
+00:02 +1: All tests passed!
+```
+
+With this integration test in place, I would say that we have now covered the app with proper tests.
+
+``` bash
+
+                             |Lines       |Functions
+Filename                     |Rate     Num|Rate    Num
+======================================================
+[lib/]
+counter_bloc.dart            |83.3%     18|    -     0
+counter_page.dart            | 100%     21|    -     0
+drawing.dart                 |53.7%     54|    -     0
+main.dart                    | 0.0%      2|    -     0
+nav_wrapper.dart             | 5.0%     20|    -     0
+search/search_page.dart      |96.5%     57|    -     0
+search/search_view_model.dart|87.5%     16|    -     0
+======================================================
+                       Total:|71.8%    188|    -     0
+```
+
+I had in mind that I should create tests for the nav wrapper as well, I completely forgot. That would have increased the coverage further more. The nav wrapper would need a widget test to test that it changes the index correctly on press and loads correct pages. It needs probably some sort unit test for the page generation.
+
+Our github search package on the other hand, doesn't have as good coverage.
+
+``` bash
+                                    |Lines      |Functions
+Filename                            |Rate    Num|Rate  Num
+==========================================================
+[lib/]
+src/github_cache.dart               | 0.0%     6|    -   0
+src/github_client.dart              | 0.0%    10|    -   0
+src/github_repository.dart          | 0.0%    10|    -   0
+src/github_search...search_bloc.dart| 100%    14|    -   0
+src/github_search_event.dart        |33.3%     6|    -   0
+src/github_search_state.dart        |81.8%    11|    -   0
+src/models/github_user.dart         |20.0%     5|    -   0
+src/models/search_result.dart       |12.5%     8|    -   0
+src/models/search_result_error.dart |33.3%     3|    -   0
+src/models/search_result_item.dart  |16.7%     6|    -   0
+test_utils/mock_g..._repository.dart|14.3%     7|    -   0
+test_utils/test_data.dart           | 100%     8|    -   0
+==========================================================
+                              Total:|40.4%    94|    -   0
+```
+
+
+
+There would be room for improvement.
+
+
+
+***
+
 9.5.2026
 
 ### Unit tests
