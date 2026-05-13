@@ -1,4 +1,3 @@
-import 'package:app/main.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 sealed class CounterEvent {}

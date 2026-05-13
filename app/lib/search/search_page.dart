@@ -58,6 +58,7 @@ class _SearchBarState extends State<_SearchBar> {
     return TextField(
       controller: _textController,
       autocorrect: false,
+      style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
       onChanged: (text) {
         _githubSearchViewModel.search(text);
       },
