@@ -9,13 +9,27 @@ TMPDIR="$(mktemp -d)"
 echo "Downloading SmolLM3 models to $MODEL_DIR"
 mkdir -p "$MODEL_DIR" "$TMPDIR"
 
-huggingface-cli download "$HF_REPO" \
-  --include "onnx/model_fp16.onnx" \
-  --include "onnx/model_fp16.onnx_data" \
-  --include "onnx/model_q4.onnx" \
-  --include "onnx/model_q4.onnx_data" \
-  --include "tokenizer.json" \
-  --local-dir "$TMPDIR"
+if command -v hf &>/dev/null; then
+  hf hub download "$HF_REPO" \
+    --include "onnx/model_fp16.onnx" \
+    --include "onnx/model_fp16.onnx_data" \
+    --include "onnx/model_q4.onnx" \
+    --include "onnx/model_q4.onnx_data" \
+    --include "tokenizer.json" \
+    --local-dir "$TMPDIR"
+elif command -v huggingface-cli &>/dev/null; then
+  huggingface-cli download "$HF_REPO" \
+    --include "onnx/model_fp16.onnx" \
+    --include "onnx/model_fp16.onnx_data" \
+    --include "onnx/model_q4.onnx" \
+    --include "onnx/model_q4.onnx_data" \
+    --include "tokenizer.json" \
+    --local-dir "$TMPDIR"
+else
+  echo "Error: neither 'hf' nor 'huggingface-cli' found."
+  echo "Install: pip install -U huggingface-hub"
+  exit 1
+fi
 
 cp "$TMPDIR"/onnx/*.onnx* "$MODEL_DIR"/
 cp "$TMPDIR"/tokenizer.json "$MODEL_DIR"/
