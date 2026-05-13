@@ -78,7 +78,7 @@ flutter:
   # the material Icons class.
   uses-material-design: true
   assets:
-    - assets/models/onnx/tokenizer.json
+    - assets/models/onnx/
     - assets/media/images/
 
   # To add assets to your application, add an assets section, like this:

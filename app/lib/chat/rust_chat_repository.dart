@@ -47,6 +47,7 @@ class RustChatRepository implements ChatRepository {
     final file = File('${dir.path}/tokenizer.json');
     if (!await file.exists()) {
       final data = await rootBundle.load('assets/models/onnx/tokenizer.json');
+      final file = File('${dir.path}/tokenizer.json');
       await file.writeAsBytes(data.buffer.asUint8List(), flush: true);
     }
     return file.path;
