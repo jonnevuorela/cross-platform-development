@@ -1,4 +1,3 @@
-
 import 'dart:math';
 
 import 'package:flutter/material.dart';
@@ -34,7 +33,7 @@ class DrawingPageState extends State<DrawingPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-     body: Center(
+      body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
