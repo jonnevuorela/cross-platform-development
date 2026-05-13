@@ -1,6 +1,34 @@
 # Learning journal of Cross-platform mobile application development course
 
 ***
+
+
+13.5.2026
+
+### Platform specific code
+
+#### Quick start
+
+The quick start example was quite straight forward to get running. I already had the prerequisites installed and I just ran the command from fzyzcjy/flutter_rust_bridge github repository.
+``` bash
+cargo install flutter_rust_bridge_codegen && flutter_rust_bridge_codegen create my_app && cd my_app && flutter run
+```
+
+
+![](journal/media/rust_bridge_demo.png)
+
+#### Further experiments and use cases
+
+One use case for the native code would be to run a local ai model. Voice recognition, text to speech, image classification or just straight up llm. This is something that I want to try out too, what kind of a language model I can run on my iPhone. 
+
+I went to huggingface to see the latest small models that would be feasible to run with phones hardware and selected the Huggingfaces SmolLM3-3B-ONNX. I selected the ONNX model, as it was the most familiar tech for me since I have built a ONNX image recognition model wrapper in go previously.
+
+I let an AI agent loose on my project with the prompt: "Create an llm chat interface page and bloc business logic, similar to what the project already has for gitHub search." Now that I have the boilerplate code, which im already familiar with, I can focus on harnessing the ONNX runtime in rust myself. For code generation, I used GPT-5.2-Codex on OpenCode.
+
+The refresher on rust coding was much needed. Last time I touched rust was two years ago, when I read "The Rust Programming Language" book and did some exercises. Never really used it on anything more meaningful. Now that I think about it, I haven't had a place to use it because I find Zig to be a much more intriguing take on modern systems programming.
+
+***
+
 12.5.2026
 
 ### Integration test
