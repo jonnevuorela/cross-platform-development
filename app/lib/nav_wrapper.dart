@@ -5,6 +5,7 @@ import 'package:llm_chat/llm_chat.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import 'chat/chat_page.dart';
+import 'chat/chat_repository_impl.dart';
 import 'chat/rust_chat_repository.dart';
 import 'counter_bloc.dart';
 import 'counter_page.dart';
@@ -13,9 +14,10 @@ import 'search/search_page.dart';
 import 'ui/app_messenger.dart';
 
 class NavWrapper extends StatefulWidget {
-  const NavWrapper({super.key, this.useMock = false});
+  const NavWrapper({super.key, this.useMock = false, this.rustReady = false});
 
   final bool useMock;
+  final bool rustReady;
 
   @override
   State<NavWrapper> createState() => _NavWrapperState();
@@ -115,7 +117,11 @@ class _NavWrapperState extends State<NavWrapper> {
               : GithubRepository(),
           dispose: (repository) => repository.dispose(),
         ),
-        RepositoryProvider<ChatRepository>(create: (_) => RustChatRepository()),
+        RepositoryProvider<ChatRepository>(
+          create: (_) => widget.rustReady
+              ? RustChatRepository()
+              : EchoChatRepository(),
+        ),
       ],
       child: MaterialApp(
         scaffoldMessengerKey: appMessengerKey,

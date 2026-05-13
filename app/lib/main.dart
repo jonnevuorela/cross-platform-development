@@ -1,4 +1,3 @@
-import 'package:app/src/rust/api/simple.dart';
 import 'package:app/src/rust/frb_generated.dart';
 import 'package:app/nav_wrapper.dart';
 import 'package:flutter/material.dart';
@@ -9,9 +8,16 @@ void main() async {
 
   WidgetsFlutterBinding.ensureInitialized();
   await Hive.initFlutter();
-  await RustLib.init();
-  print(greet(name: "Jonne"));
-  runApp(const NavWrapper(useMock: useMock));
+
+  bool rustReady = false;
+  try {
+    await RustLib.init();
+    rustReady = true;
+  } catch (e) {
+    print('Rust init failed: $e');
+  }
+
+  runApp(NavWrapper(useMock: useMock, rustReady: rustReady));
 }
 
 //
