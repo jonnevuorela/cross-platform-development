@@ -25,7 +25,23 @@ I went to huggingface to see the latest small models that would be feasible to r
 
 I let an AI agent loose on my project with the prompt: "Create an llm chat interface page and bloc business logic, similar to what the project already has for gitHub search." Now that I have the boilerplate code, which im already familiar with, I can focus on harnessing the ONNX runtime in rust myself. For code generation, I used GPT-5.2-Codex on OpenCode.
 
-The refresher on rust coding was much needed. Last time I touched rust was two years ago, when I read "The Rust Programming Language" book and did some exercises. Never really used it on anything more meaningful. Now that I think about it, I haven't had a place to use it because I find Zig to be a much more intriguing take on modern systems programming.
+The refresher on rust coding was much needed. Last time I touched rust was two years ago, when I read "The Rust Programming Language" book and did some exercises. Never really used it on anything more meaningful. Now that I think about it, I haven't had a place to use it because I find Zig to be a much more intriguing take on modern systems programming. So the excuse to use rust here was fun.
+
+I made a very simple form of runtime initialization code, but eventually passed the rust part also to the ai agent to get with it. There is really not that much of a hand written code in this new feature but I find that I got to play around with the native code integration enough. Its very similar to Tauri, which I have used for one project. 
+
+In the Tauri app I had a frontend for making mind maps obviously made by web technologies and had the rust to do local file reads and writes to store the contents.
+
+Back and forth few rounds with the agent enhancing the chatting experience, I got where I wanted. The model spits out utter non-sense, but it works. I included the full 3B parameter model and a heavily quantizized version of it in case the device lacks the capacity. 
+
+![deep pondering](journal/media/deep_ponder.png)
+
+These are not light matters and being a 3B parameter model is hard enough already.
+
+Now to pull the project on a mac and try to build a ios version. this wasn't so straight forward. I have only ever build and sideloaded one app on iphone prior to this one and the process wasn't smooth then and it wasn't smooth now. Eventually I got the build signed and solved also static linking problems I initially had. The models were not properly included in the bundle and there was also problems statically linking all the rust code and C++ code, but I managed eventually.
+
+
+
+
 
 ***
 
