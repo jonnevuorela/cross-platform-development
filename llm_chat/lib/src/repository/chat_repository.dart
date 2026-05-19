@@ -5,6 +5,8 @@ import '../models/model_variant.dart';
 abstract class ChatRepository {
   Future<void> loadModel({required ModelVariant variant});
 
+  Future<void> ensureReady({required ModelVariant variant});
+
   Stream<ChatChunk> generate({
     required String prompt,
     required ModelVariant variant,

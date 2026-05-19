@@ -7,6 +7,11 @@ class EchoChatRepository implements ChatRepository {
   }
 
   @override
+  Future<void> ensureReady({required ModelVariant variant}) async {
+    return;
+  }
+
+  @override
   Stream<ChatChunk> generate({
     required String prompt,
     required ModelVariant variant,

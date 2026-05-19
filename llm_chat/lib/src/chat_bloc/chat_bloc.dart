@@ -60,6 +60,19 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       return;
     }
 
+    emit(state.copyWith(isLoadingModel: true, error: null));
+    try {
+      await _repository.ensureReady(variant: state.modelVariant);
+    } catch (error) {
+      emit(state.copyWith(
+        isLoadingModel: false,
+        error: error.toString(),
+      ));
+      return;
+    }
+
+    emit(state.copyWith(isLoadingModel: false));
+
     final now = DateTime.now();
     final updatedMessages = List<ChatMessage>.from(state.messages)
       ..add(ChatMessage(

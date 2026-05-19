@@ -8,6 +8,8 @@ import '../src/rust/api/simple.dart' as rust_api;
 
 class RustChatRepository implements ChatRepository {
   late String _modelsBase;
+  bool _isModelReady = false;
+  Object? _initError;
 
   RustChatRepository() {
     _modelsBase = _resolveModelsPath();
@@ -28,6 +30,8 @@ class RustChatRepository implements ChatRepository {
 
   @override
   Future<void> loadModel({required ModelVariant variant}) async {
+    _isModelReady = false;
+    _initError = null;
     final modelFile = variant == ModelVariant.fp16 ? 'model_fp16' : 'model_q4';
     final modelPath = '$_modelsBase/$modelFile.onnx';
 
@@ -40,6 +44,23 @@ class RustChatRepository implements ChatRepository {
 
     final tokenizerPath = await _ensureTokenizer();
     await rust_api.initModel(modelPath: modelPath, tokenizerPath: tokenizerPath);
+    _isModelReady = true;
+  }
+
+  @override
+  Future<void> ensureReady({required ModelVariant variant}) async {
+    if (_isModelReady) {
+      return;
+    }
+    if (_initError != null) {
+      throw _initError!;
+    }
+    try {
+      await loadModel(variant: variant);
+    } catch (error) {
+      _initError = error;
+      rethrow;
+    }
   }
 
   Future<String> _ensureTokenizer() async {
