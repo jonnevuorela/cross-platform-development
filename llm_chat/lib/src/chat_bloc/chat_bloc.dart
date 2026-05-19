@@ -42,7 +42,15 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
   ) async {
     emit(state.copyWith(isLoadingModel: true, error: null));
     try {
-      await _repository.loadModel(variant: state.modelVariant);
+      final variants = await _repository.availableModelVariants();
+      final initialVariant = variants.contains(state.modelVariant)
+          ? state.modelVariant
+          : (variants.isNotEmpty ? variants.first : state.modelVariant);
+      emit(state.copyWith(
+        availableModelVariants: variants,
+        modelVariant: initialVariant,
+      ));
+      await _repository.loadModel(variant: initialVariant);
       emit(state.copyWith(isLoadingModel: false));
     } catch (error) {
       emit(state.copyWith(
@@ -186,6 +194,9 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     ChatModelVariantLoaded event,
     Emitter<ChatState> emit,
   ) {
+    if (!state.availableModelVariants.contains(event.modelVariant)) {
+      return;
+    }
     emit(state.copyWith(
       modelVariant: event.modelVariant,
       isAutoSelectedModel: event.isAutoSelected,
@@ -196,6 +207,9 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     ChatModelVariantChanged event,
     Emitter<ChatState> emit,
   ) {
+    if (!state.availableModelVariants.contains(event.modelVariant)) {
+      return;
+    }
     emit(state.copyWith(
       modelVariant: event.modelVariant,
       isAutoSelectedModel: false,

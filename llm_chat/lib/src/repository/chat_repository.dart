@@ -7,6 +7,8 @@ abstract class ChatRepository {
 
   Future<void> ensureReady({required ModelVariant variant});
 
+  Future<List<ModelVariant>> availableModelVariants();
+
   Stream<ChatChunk> generate({
     required String prompt,
     required ModelVariant variant,

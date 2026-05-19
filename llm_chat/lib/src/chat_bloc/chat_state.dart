@@ -16,6 +16,7 @@ class ChatState extends Equatable {
     required this.activeConversationId,
     required this.modelVariant,
     required this.isAutoSelectedModel,
+    required this.availableModelVariants,
   });
 
   factory ChatState.initial() {
@@ -29,6 +30,7 @@ class ChatState extends Equatable {
       activeConversationId: null,
       modelVariant: ModelVariant.q4,
       isAutoSelectedModel: true,
+      availableModelVariants: const [],
     );
   }
 
@@ -41,6 +43,7 @@ class ChatState extends Equatable {
   final String? activeConversationId;
   final ModelVariant modelVariant;
   final bool isAutoSelectedModel;
+  final List<ModelVariant> availableModelVariants;
 
   ChatState copyWith({
     List<ChatMessage>? messages,
@@ -52,6 +55,7 @@ class ChatState extends Equatable {
     String? activeConversationId,
     ModelVariant? modelVariant,
     bool? isAutoSelectedModel,
+    List<ModelVariant>? availableModelVariants,
   }) {
     return ChatState(
       messages: messages ?? this.messages,
@@ -63,6 +67,7 @@ class ChatState extends Equatable {
       activeConversationId: activeConversationId ?? this.activeConversationId,
       modelVariant: modelVariant ?? this.modelVariant,
       isAutoSelectedModel: isAutoSelectedModel ?? this.isAutoSelectedModel,
+      availableModelVariants: availableModelVariants ?? this.availableModelVariants,
     );
   }
 
@@ -77,5 +82,6 @@ class ChatState extends Equatable {
         activeConversationId,
         modelVariant,
         isAutoSelectedModel,
+        availableModelVariants,
       ];
 }

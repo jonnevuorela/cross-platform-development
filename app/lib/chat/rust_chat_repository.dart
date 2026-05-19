@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/services.dart';
@@ -7,42 +8,67 @@ import 'package:path_provider/path_provider.dart';
 import '../src/rust/api/simple.dart' as rust_api;
 
 class RustChatRepository implements ChatRepository {
-  late String _modelsBase;
   bool _isModelReady = false;
   Object? _initError;
 
-  RustChatRepository() {
-    _modelsBase = _resolveModelsPath();
+  static const _modelsDirName = 'models/bundled';
+  static const _tokenizerAsset = 'assets/models/onnx/tokenizer.json';
+  static const _fp16Asset = 'assets/models/onnx/model_fp16.onnx';
+  static const _q4Asset = 'assets/models/onnx/model_q4.onnx';
+
+  RustChatRepository();
+
+  Future<Directory> _modelsDir() async {
+    final dir = await getApplicationSupportDirectory();
+    final modelsDir = Directory('${dir.path}/$_modelsDirName');
+    if (!await modelsDir.exists()) {
+      await modelsDir.create(recursive: true);
+    }
+    return modelsDir;
   }
 
-  static String _resolveModelsPath() {
-    final projectDir = Directory.current.path;
-    final assetsPath = '$projectDir/assets/models/onnx';
-    if (Directory(assetsPath).existsSync()) {
-      return assetsPath;
+  String _assetForVariant(ModelVariant variant) {
+    return variant == ModelVariant.fp16 ? _fp16Asset : _q4Asset;
+  }
+
+  String _fileNameForVariant(ModelVariant variant) {
+    return variant == ModelVariant.fp16 ? 'model_fp16.onnx' : 'model_q4.onnx';
+  }
+
+  Future<String> _ensureBundledAsset({
+    required String assetPath,
+    required String fileName,
+  }) async {
+    final dir = await _modelsDir();
+    final file = File('${dir.path}/$fileName');
+    if (await file.exists()) {
+      return file.path;
     }
-    final envPath = Platform.environment['LLM_MODELS_PATH'];
-    if (envPath != null && Directory(envPath).existsSync()) {
-      return envPath;
-    }
-    return assetsPath;
+    final data = await rootBundle.load(assetPath);
+    await file.writeAsBytes(data.buffer.asUint8List(), flush: true);
+    return file.path;
+  }
+
+  Future<String> _ensureBundledModel(ModelVariant variant) async {
+    return _ensureBundledAsset(
+      assetPath: _assetForVariant(variant),
+      fileName: _fileNameForVariant(variant),
+    );
+  }
+
+  Future<String> _ensureBundledTokenizer() async {
+    return _ensureBundledAsset(
+      assetPath: _tokenizerAsset,
+      fileName: 'tokenizer.json',
+    );
   }
 
   @override
   Future<void> loadModel({required ModelVariant variant}) async {
     _isModelReady = false;
     _initError = null;
-    final modelFile = variant == ModelVariant.fp16 ? 'model_fp16' : 'model_q4';
-    final modelPath = '$_modelsBase/$modelFile.onnx';
-
-    if (!File(modelPath).existsSync()) {
-      throw Exception(
-        'Model not found at $modelPath.\n'
-        'Run: scripts/download_models.sh',
-      );
-    }
-
-    final tokenizerPath = await _ensureTokenizer();
+    final modelPath = await _ensureBundledModel(variant);
+    final tokenizerPath = await _ensureBundledTokenizer();
     await rust_api.initModel(modelPath: modelPath, tokenizerPath: tokenizerPath);
     _isModelReady = true;
   }
@@ -63,15 +89,18 @@ class RustChatRepository implements ChatRepository {
     }
   }
 
-  Future<String> _ensureTokenizer() async {
-    final dir = await getApplicationSupportDirectory();
-    final file = File('${dir.path}/tokenizer.json');
-    if (!await file.exists()) {
-      final data = await rootBundle.load('assets/models/onnx/tokenizer.json');
-      final file = File('${dir.path}/tokenizer.json');
-      await file.writeAsBytes(data.buffer.asUint8List(), flush: true);
+  @override
+  Future<List<ModelVariant>> availableModelVariants() async {
+    final manifest = await rootBundle.loadString('AssetManifest.json');
+    final assets = (jsonDecode(manifest) as Map<String, dynamic>).keys.toSet();
+    final variants = <ModelVariant>[];
+    if (assets.contains(_fp16Asset)) {
+      variants.add(ModelVariant.fp16);
     }
-    return file.path;
+    if (assets.contains(_q4Asset)) {
+      variants.add(ModelVariant.q4);
+    }
+    return variants;
   }
 
   @override

@@ -236,30 +236,43 @@ class _ChatPageState extends State<ChatPage> {
 
   Future<void> _probeAndSelectModel(BuildContext context) async {
     final repository = context.read<ChatRepository>();
+    final available = await repository.availableModelVariants();
+    if (available.isEmpty) {
+      return;
+    }
     final stopwatch = Stopwatch()..start();
     try {
-      await repository.loadModel(variant: ModelVariant.fp16);
-      final stream = repository.generate(
-        prompt: 'ping',
-        variant: ModelVariant.fp16,
-        maxTokens: 2,
-      );
-      await stream.first.timeout(const Duration(milliseconds: 700));
-      stopwatch.stop();
-      if (stopwatch.elapsedMilliseconds < 2500) {
-        context.read<ChatBloc>().add(ChatModelVariantLoaded(
-              modelVariant: ModelVariant.fp16,
-              isAutoSelected: true,
-            ));
-        Toasts.show('Auto-switched to FP16 model', context: context);
-        return;
+      if (available.contains(ModelVariant.fp16)) {
+        await repository.loadModel(variant: ModelVariant.fp16);
+        final stream = repository.generate(
+          prompt: 'ping',
+          variant: ModelVariant.fp16,
+          maxTokens: 2,
+        );
+        await stream.first.timeout(const Duration(milliseconds: 700));
+        stopwatch.stop();
+        if (stopwatch.elapsedMilliseconds < 2500) {
+          context.read<ChatBloc>().add(ChatModelVariantLoaded(
+                modelVariant: ModelVariant.fp16,
+                isAutoSelected: true,
+              ));
+          Toasts.show('Auto-switched to FP16 model', context: context);
+          return;
+        }
       }
     } catch (_) {}
+    final fallback = available.contains(ModelVariant.q4)
+        ? ModelVariant.q4
+        : available.first;
     context.read<ChatBloc>().add(ChatModelVariantLoaded(
-          modelVariant: ModelVariant.q4,
+          modelVariant: fallback,
           isAutoSelected: true,
         ));
-    Toasts.show('Auto-switched to Quantized model', context: context);
+    Toasts.show(
+        fallback == ModelVariant.fp16
+            ? 'Auto-switched to FP16 model'
+            : 'Auto-switched to Quantized model',
+        context: context);
   }
 }
 
@@ -345,6 +358,10 @@ class _ModelToggle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final availableVariants = state.availableModelVariants;
+    final visibleVariants = availableVariants.isEmpty
+        ? ModelVariant.values
+        : availableVariants;
     return PopupMenuButton<ModelVariant>(
       icon: const Icon(Icons.tune),
       onSelected: (variant) async {
@@ -362,16 +379,18 @@ class _ModelToggle extends StatelessWidget {
         }
       },
       itemBuilder: (context) => [
-        CheckedPopupMenuItem(
-          value: ModelVariant.fp16,
-          checked: state.modelVariant == ModelVariant.fp16,
-          child: const Text('FP16 (High quality)'),
-        ),
-        CheckedPopupMenuItem(
-          value: ModelVariant.q4,
-          checked: state.modelVariant == ModelVariant.q4,
-          child: const Text('Q4 (Faster)'),
-        ),
+        if (visibleVariants.contains(ModelVariant.fp16))
+          CheckedPopupMenuItem(
+            value: ModelVariant.fp16,
+            checked: state.modelVariant == ModelVariant.fp16,
+            child: const Text('FP16 (High quality)'),
+          ),
+        if (visibleVariants.contains(ModelVariant.q4))
+          CheckedPopupMenuItem(
+            value: ModelVariant.q4,
+            checked: state.modelVariant == ModelVariant.q4,
+            child: const Text('Q4 (Faster)'),
+          ),
       ],
     );
   }
