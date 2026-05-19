@@ -26,20 +26,27 @@ A new Flutter FFI plugin project.
   s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES', 'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386' }
   s.swift_version = '5.0'
 
-  s.script_phase = {
-    :name => 'Build Rust library',
-    # First argument is relative path to the `rust` folder, second is name of rust library
-    :script => 'sh "$PODS_TARGET_SRCROOT/../cargokit/build_pod.sh" ../../rust rust_lib_app',
-    :execution_position => :before_compile,
-    :input_files => ['${BUILT_PRODUCTS_DIR}/cargokit_phony'],
-    # Let XCode know that the static library referenced in -force_load below is
-    # created by this build step.
-    :output_files => ["${BUILT_PRODUCTS_DIR}/librust_lib_app.a"],
-  }
+  s.script_phases = [
+    {
+      :name => 'Build Rust library',
+      :script => 'sh "$PODS_TARGET_SRCROOT/../cargokit/build_pod.sh" ../../rust rust_lib_app',
+      :execution_position => :before_compile,
+      :input_files => ['${BUILT_PRODUCTS_DIR}/cargokit_phony'],
+      :output_files => ["${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}/librust_lib_app.a"],
+    },
+    {
+      :name => 'Embed Rust library into framework',
+      # Replace the framework binary (compiled from dummy_file.c) with librust_lib_app.a
+      # so the Runner's -u flags can find the FRB symbols at link time.
+      :script => 'cp "${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}/librust_lib_app.a" "${BUILT_PRODUCTS_DIR}/${EXECUTABLE_PATH}"',
+      :execution_position => :after_compile,
+      :input_files => ["${BUILT_PRODUCTS_DIR}/${EXECUTABLE_PATH}", "${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}/librust_lib_app.a"],
+      :output_files => ["${BUILT_PRODUCTS_DIR}/${EXECUTABLE_PATH}"],
+    },
+  ]
   s.pod_target_xcconfig = {
     'DEFINES_MODULE' => 'YES',
     # Flutter.framework does not contain a i386 slice.
     'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386',
-    'OTHER_LDFLAGS' => '-force_load ${BUILT_PRODUCTS_DIR}/librust_lib_app.a',
   }
 end
