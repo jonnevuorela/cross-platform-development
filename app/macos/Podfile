@@ -47,23 +47,6 @@ post_install do |installer|
         flags = config.build_settings['OTHER_LDFLAGS']
         flags = [flags] if flags.is_a?(String)
         flags ||= ['$(inherited)']
-<<<<<<< HEAD
-        flags << '-Wl,-u,frb_pde_ffi_dispatcher_primary'
-        flags << '-Wl,-u,frb_pde_ffi_dispatcher_sync'
-        flags << '-Wl,-u,frb_dart_fn_deliver_output'
-        flags << '-Wl,-u,frb_get_rust_content_hash'
-        flags << '-Wl,-u,frb_init_frb_dart_api_dl'
-        flags << '-Wl,-u,frb_free_wire_sync_rust2dart_dco'
-        flags << '-Wl,-u,frb_free_wire_sync_rust2dart_sse'
-        flags << '-Wl,-u,frb_create_shutdown_callback'
-        flags << '-Wl,-u,frb_rust_vec_u8_new'
-        flags << '-Wl,-u,frb_rust_vec_u8_resize'
-        flags << '-Wl,-u,frb_rust_vec_u8_free'
-        flags << '-Wl,-u,frb_dart_opaque_dart2rust_encode'
-        flags << '-Wl,-u,frb_dart_opaque_rust2dart_decode'
-        flags << '-Wl,-u,frb_dart_opaque_drop_thread_box_persistent_handle'
-        flags << '-Wl,-u,store_dart_post_cobject'
-=======
         flags << '-Wl,-u,_frb_pde_ffi_dispatcher_primary'
         flags << '-Wl,-u,_frb_pde_ffi_dispatcher_sync'
         flags << '-Wl,-u,_frb_dart_fn_deliver_output'
@@ -79,7 +62,6 @@ post_install do |installer|
         flags << '-Wl,-u,_frb_dart_opaque_rust2dart_decode'
         flags << '-Wl,-u,_frb_dart_opaque_drop_thread_box_persistent_handle'
         flags << '-Wl,-u,_store_dart_post_cobject'
->>>>>>> 30e5baa (fix: replace -force_load with -Wl,-u,_<symbol> flags for FRB symbols)
         flags << '-export_dynamic'
         config.build_settings['OTHER_LDFLAGS'] = flags
         config.build_settings['DEAD_CODE_STRIPPING'] = 'NO'

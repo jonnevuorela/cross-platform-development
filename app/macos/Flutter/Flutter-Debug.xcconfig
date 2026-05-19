@@ -1,8 +1,4 @@
 #include? "Pods/Target Support Files/Pods-Runner/Pods-Runner.debug.xcconfig"
 #include "ephemeral/Flutter-Generated.xcconfig"
-<<<<<<< HEAD
-OTHER_LDFLAGS = $(inherited) -Wl,-u,frb_pde_ffi_dispatcher_primary -Wl,-u,frb_pde_ffi_dispatcher_sync -Wl,-u,frb_dart_fn_deliver_output -Wl,-u,frb_get_rust_content_hash -Wl,-u,frb_init_frb_dart_api_dl -Wl,-u,frb_free_wire_sync_rust2dart_dco -Wl,-u,frb_free_wire_sync_rust2dart_sse -Wl,-u,frb_create_shutdown_callback -Wl,-u,frb_rust_vec_u8_new -Wl,-u,frb_rust_vec_u8_resize -Wl,-u,frb_rust_vec_u8_free -Wl,-u,frb_dart_opaque_dart2rust_encode -Wl,-u,frb_dart_opaque_rust2dart_decode -Wl,-u,frb_dart_opaque_drop_thread_box_persistent_handle -Wl,-u,store_dart_post_cobject
-=======
 OTHER_LDFLAGS = $(inherited) -Wl,-u,_frb_pde_ffi_dispatcher_primary -Wl,-u,_frb_pde_ffi_dispatcher_sync -Wl,-u,_frb_dart_fn_deliver_output -Wl,-u,_frb_get_rust_content_hash -Wl,-u,_frb_init_frb_dart_api_dl -Wl,-u,_frb_free_wire_sync_rust2dart_dco -Wl,-u,_frb_free_wire_sync_rust2dart_sse -Wl,-u,_frb_create_shutdown_callback -Wl,-u,_frb_rust_vec_u8_new -Wl,-u,_frb_rust_vec_u8_resize -Wl,-u,_frb_rust_vec_u8_free -Wl,-u,_frb_dart_opaque_dart2rust_encode -Wl,-u,_frb_dart_opaque_rust2dart_decode -Wl,-u,_frb_dart_opaque_drop_thread_box_persistent_handle -Wl,-u,_store_dart_post_cobject
->>>>>>> 30e5baa (fix: replace -force_load with -Wl,-u,_<symbol> flags for FRB symbols)
 DEAD_CODE_STRIPPING = NO
