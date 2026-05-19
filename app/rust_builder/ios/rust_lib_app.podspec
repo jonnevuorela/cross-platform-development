@@ -32,13 +32,13 @@ A new Flutter FFI plugin project.
       :script => 'sh "$PODS_TARGET_SRCROOT/../cargokit/build_pod.sh" ../../rust rust_lib_app',
       :execution_position => :before_compile,
       :input_files => ['${BUILT_PRODUCTS_DIR}/cargokit_phony'],
-      :output_files => ["${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}/librust_lib_app.a"],
+      :output_files => ["${PODS_CONFIGURATION_BUILD_DIR}/${PRODUCT_NAME}/librust_lib_app.a"],
     },
     {
       :name => 'Embed Rust library into framework',
-      :script => 'cp "${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}/librust_lib_app.a" "${BUILT_PRODUCTS_DIR}/${EXECUTABLE_PATH}"',
+      :script => 'cp "${PODS_CONFIGURATION_BUILD_DIR}/${PRODUCT_NAME}/librust_lib_app.a" "${BUILT_PRODUCTS_DIR}/${EXECUTABLE_PATH}"',
       :execution_position => :after_compile,
-      :input_files => ["${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}/librust_lib_app.a"],
+      :input_files => ["${PODS_CONFIGURATION_BUILD_DIR}/${PRODUCT_NAME}/librust_lib_app.a"],
     },
   ]
   s.pod_target_xcconfig = {
