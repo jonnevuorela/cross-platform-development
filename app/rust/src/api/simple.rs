@@ -48,24 +48,37 @@ static SESSION: OnceCell<std::sync::Mutex<Session>> = OnceCell::new();
 static TOKENIZER: OnceCell<Tokenizer> = OnceCell::new();
 
 pub fn init_model(model_path: String, tokenizer_path: String) -> Result<(), Error> {
-    let tokenizer = Tokenizer::from_file(tokenizer_path)
-        .map_err(|e| Error::new(format!("Tokenizer error: {e}")))?;
+    let result = (|| {
+        let tokenizer = Tokenizer::from_file(tokenizer_path)
+            .map_err(|e| Error::new(format!("Tokenizer error: {e}")))?;
 
-    let session = Session::builder()?
-        .with_optimization_level(GraphOptimizationLevel::Level3)?
-        .with_intra_threads(4)?
-        .commit_from_file(model_path)?;
+        let session = Session::builder()?
+            .with_optimization_level(GraphOptimizationLevel::Level3)?
+            .with_intra_threads(4)?
+            .commit_from_file(model_path)?;
 
-    log_model_io(&session);
+        log_model_io(&session);
 
-    let _ = TOKENIZER.set(tokenizer);
-    let _ = SESSION.set(std::sync::Mutex::new(session));
-    Ok(())
+        let _ = TOKENIZER.set(tokenizer);
+        let _ = SESSION.set(std::sync::Mutex::new(session));
+        Ok(())
+    })();
+
+    if let Err(ref err) = result {
+        eprintln!("[LLM] init_model error: {err}");
+    }
+
+    result
 }
 
 pub fn generate(prompt: String, max_tokens: u32) -> Result<Vec<String>, Error> {
-    let tokens = run_generate(&prompt, max_tokens, None)?;
-    Ok(tokens)
+    match run_generate(&prompt, max_tokens, None) {
+        Ok(tokens) => Ok(tokens),
+        Err(err) => {
+            eprintln!("[LLM] generate error: {err}");
+            Err(err)
+        }
+    }
 }
 
 pub fn generate_stream(
@@ -73,8 +86,13 @@ pub fn generate_stream(
     max_tokens: u32,
     stream: StreamSink<String>,
 ) -> Result<(), Error> {
-    let _ = run_generate(&prompt, max_tokens, Some(&stream))?;
-    Ok(())
+    match run_generate(&prompt, max_tokens, Some(&stream)) {
+        Ok(_) => Ok(()),
+        Err(err) => {
+            eprintln!("[LLM] generate_stream error: {err}");
+            Err(err)
+        }
+    }
 }
 
 fn run_generate(prompt: &str, max_tokens: u32, sink: Option<&StreamSink<String>>) -> Result<Vec<String>, Error> {

@@ -111,6 +111,9 @@ class RustChatRepository implements ChatRepository {
   }) {
     return rust_api
         .generateStream(prompt: prompt, maxTokens: maxTokens)
+        .handleError((error, stackTrace) {
+          print('[LLM] generate_stream error: $error');
+        })
         .map((chunk) => ChatChunk(text: chunk));
   }
 
