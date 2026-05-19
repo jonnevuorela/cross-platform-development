@@ -1,7 +1,10 @@
+import 'dart:io';
+
 import 'package:app/src/rust/frb_generated.dart';
 import 'package:app/nav_wrapper.dart';
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated_io.dart';
 
 void main() async {
   const useMock = bool.fromEnvironment('USE_MOCK', defaultValue: false);
@@ -11,7 +14,10 @@ void main() async {
 
   bool rustReady = false;
   try {
-    await RustLib.init();
+    final externalLibrary = Platform.isIOS
+        ? ExternalLibrary.process(iKnowHowToUseIt: true)
+        : null;
+    await RustLib.init(externalLibrary: externalLibrary);
     rustReady = true;
   } catch (e) {
     print('Rust init failed: $e');

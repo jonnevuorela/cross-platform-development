@@ -39,6 +39,6 @@ A new Flutter FFI plugin project.
     'DEFINES_MODULE' => 'YES',
     # Flutter.framework does not contain a i386 slice.
     'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386',
-    'OTHER_LDFLAGS' => '-force_load ${BUILT_PRODUCTS_DIR}/librust_lib_app.a',
+    'OTHER_LDFLAGS' => '-Wl,-u,frb_pde_ffi_dispatcher_primary -Wl,-u,frb_pde_ffi_dispatcher_sync -Wl,-u,frb_dart_fn_deliver_output -Wl,-u,frb_get_rust_content_hash -Wl,-u,frb_init_frb_dart_api_dl -Wl,-u,frb_free_wire_sync_rust2dart_dco -Wl,-u,frb_free_wire_sync_rust2dart_sse -Wl,-u,frb_create_shutdown_callback -Wl,-u,frb_rust_vec_u8_new -Wl,-u,frb_rust_vec_u8_resize -Wl,-u,frb_rust_vec_u8_free -Wl,-u,frb_dart_opaque_dart2rust_encode -Wl,-u,frb_dart_opaque_rust2dart_decode -Wl,-u,frb_dart_opaque_drop_thread_box_persistent_handle -Wl,-u,store_dart_post_cobject',
   }
 end
