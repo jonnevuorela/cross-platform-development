@@ -36,12 +36,9 @@ A new Flutter FFI plugin project.
     },
     {
       :name => 'Embed Rust library into framework',
-      # Replace the framework binary (compiled from dummy_file.c) with librust_lib_app.a
-      # so the Runner's -u flags can find the FRB symbols at link time.
       :script => 'cp "${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}/librust_lib_app.a" "${BUILT_PRODUCTS_DIR}/${EXECUTABLE_PATH}"',
       :execution_position => :after_compile,
-      :input_files => ["${BUILT_PRODUCTS_DIR}/${EXECUTABLE_PATH}", "${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}/librust_lib_app.a"],
-      :output_files => ["${BUILT_PRODUCTS_DIR}/${EXECUTABLE_PATH}"],
+      :input_files => ["${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}/librust_lib_app.a"],
     },
   ]
   s.pod_target_xcconfig = {

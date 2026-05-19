@@ -37,8 +37,7 @@ A new Flutter FFI plugin project.
       :name => 'Embed Rust library into framework',
       :script => 'cp "${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}/librust_lib_app.a" "${BUILT_PRODUCTS_DIR}/${EXECUTABLE_PATH}"',
       :execution_position => :after_compile,
-      :input_files => ["${BUILT_PRODUCTS_DIR}/${EXECUTABLE_PATH}", "${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}/librust_lib_app.a"],
-      :output_files => ["${BUILT_PRODUCTS_DIR}/${EXECUTABLE_PATH}"],
+      :input_files => ["${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}/librust_lib_app.a"],
     },
   ]
   s.pod_target_xcconfig = {
