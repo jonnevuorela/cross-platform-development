@@ -6,7 +6,7 @@ import '../models/chat_chunk.dart';
 import '../models/chat_conversation.dart';
 import '../models/chat_message.dart';
 import '../models/chat_recap.dart';
-import '../models/model_variant.dart';
+import '../models/model_info.dart';
 import '../repository/chat_repository.dart';
 import 'chat_event.dart';
 import 'chat_state.dart';
@@ -42,15 +42,15 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
   ) async {
     emit(state.copyWith(isLoadingModel: true, error: null));
     try {
-      final variants = await _repository.availableModelVariants();
-      final initialVariant = variants.contains(state.modelVariant)
-          ? state.modelVariant
-          : (variants.isNotEmpty ? variants.first : state.modelVariant);
+      final models = await _repository.availableModels();
+      final initialModel = models.isNotEmpty ? models.first : null;
       emit(state.copyWith(
-        availableModelVariants: variants,
-        modelVariant: initialVariant,
+        availableModels: models,
+        selectedModel: initialModel,
       ));
-      await _repository.loadModel(variant: initialVariant);
+      if (initialModel != null) {
+        await _repository.loadModel(model: initialModel);
+      }
       emit(state.copyWith(isLoadingModel: false));
     } catch (error) {
       emit(state.copyWith(
@@ -68,9 +68,14 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       return;
     }
 
+    if (state.selectedModel == null) {
+      emit(state.copyWith(error: 'No model available.'));
+      return;
+    }
+
     emit(state.copyWith(isLoadingModel: true, error: null));
     try {
-      await _repository.ensureReady(variant: state.modelVariant);
+      await _repository.ensureReady(model: state.selectedModel!);
     } catch (error) {
       emit(state.copyWith(
         isLoadingModel: false,
@@ -121,7 +126,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       await emit.forEach<ChatChunk>(
         _repository.generate(
           prompt: prompt,
-          variant: state.modelVariant,
+          model: state.selectedModel!,
         ),
         onData: (chunk) {
           final latest = List<ChatMessage>.from(state.messages);
@@ -194,11 +199,11 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     ChatModelVariantLoaded event,
     Emitter<ChatState> emit,
   ) {
-    if (!state.availableModelVariants.contains(event.modelVariant)) {
+    if (!state.availableModels.any((model) => model.id == event.model.id)) {
       return;
     }
     emit(state.copyWith(
-      modelVariant: event.modelVariant,
+      selectedModel: event.model,
       isAutoSelectedModel: event.isAutoSelected,
     ));
   }
@@ -207,11 +212,11 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     ChatModelVariantChanged event,
     Emitter<ChatState> emit,
   ) {
-    if (!state.availableModelVariants.contains(event.modelVariant)) {
+    if (!state.availableModels.any((model) => model.id == event.model.id)) {
       return;
     }
     emit(state.copyWith(
-      modelVariant: event.modelVariant,
+      selectedModel: event.model,
       isAutoSelectedModel: false,
     ));
   }

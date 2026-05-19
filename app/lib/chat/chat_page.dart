@@ -46,12 +46,12 @@ class _ChatPageState extends State<ChatPage> {
             ..add(const ChatStarted()),
       child: BlocConsumer<ChatBloc, ChatState>(
         listener: (context, state) {
-          _storage.save(
-            conversations: state.conversations,
-            activeConversationId: state.activeConversationId,
-            modelVariant: state.modelVariant,
-            isAutoSelected: state.isAutoSelectedModel,
-          );
+            _storage.save(
+              conversations: state.conversations,
+              activeConversationId: state.activeConversationId,
+              modelId: state.selectedModel?.id,
+              isAutoSelected: state.isAutoSelectedModel,
+            );
 
           if (!_didInit) {
             _didInit = true;
@@ -61,12 +61,18 @@ class _ChatPageState extends State<ChatPage> {
                     conversations: _storageData!.conversations,
                     activeConversationId: _storageData!.activeConversationId,
                   ));
-              context.read<ChatBloc>().add(ChatModelVariantLoaded(
-                    modelVariant: _storageData!.modelVariant,
-                    isAutoSelected: _storageData!.isAutoSelected,
-                  ));
+              if (state.availableModels.isNotEmpty) {
+                final storedModel = state.availableModels.firstWhere(
+                  (model) => model.id == _storageData!.modelId,
+                  orElse: () => state.selectedModel ?? state.availableModels.first,
+                );
+                context.read<ChatBloc>().add(ChatModelVariantLoaded(
+                      model: storedModel,
+                      isAutoSelected: _storageData!.isAutoSelected,
+                    ));
+              }
               if (_storageData!.isAutoSelected) {
-                _probeAndSelectModel(context);
+                _probeAndSelectModel(context, state);
               }
             });
           }
@@ -139,16 +145,20 @@ class _ChatPageState extends State<ChatPage> {
                       ),
                       Positioned(
                         top: 16, right: 16,
-                        child: _ModelBadge(variant: state.modelVariant),
+                        child: state.selectedModel == null
+                            ? const SizedBox.shrink()
+                            : _ModelBadge(model: state.selectedModel!),
                       ),
                       Positioned(
                         top: 64, right: 16,
-                        child: Image.asset(
-                          state.modelVariant == ModelVariant.fp16
-                              ? 'assets/media/images/big-brain-wojak.png'
-                              : 'assets/media/images/no-brain-dumb.png',
-                          width: 64, height: 64, fit: BoxFit.contain,
-                        ),
+                        child: state.selectedModel == null
+                            ? const SizedBox.shrink()
+                            : Image.asset(
+                                'assets/media/images/big-brain-wojak.png',
+                                width: 64,
+                                height: 64,
+                                fit: BoxFit.contain,
+                              ),
                       ),
                       ListView.builder(
                         controller: _scrollController,
@@ -234,45 +244,39 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 
-  Future<void> _probeAndSelectModel(BuildContext context) async {
+  Future<void> _probeAndSelectModel(
+    BuildContext context, ChatState state) async {
     final repository = context.read<ChatRepository>();
-    final available = await repository.availableModelVariants();
+    final available = await repository.availableModels();
     if (available.isEmpty) {
       return;
     }
     final stopwatch = Stopwatch()..start();
     try {
-      if (available.contains(ModelVariant.fp16)) {
-        await repository.loadModel(variant: ModelVariant.fp16);
-        final stream = repository.generate(
-          prompt: 'ping',
-          variant: ModelVariant.fp16,
-          maxTokens: 2,
-        );
-        await stream.first.timeout(const Duration(milliseconds: 700));
-        stopwatch.stop();
-        if (stopwatch.elapsedMilliseconds < 2500) {
-          context.read<ChatBloc>().add(ChatModelVariantLoaded(
-                modelVariant: ModelVariant.fp16,
-                isAutoSelected: true,
-              ));
-          Toasts.show('Auto-switched to FP16 model', context: context);
-          return;
-        }
+      final preferred = state.selectedModel ?? available.first;
+      await repository.loadModel(model: preferred);
+      final stream = repository.generate(
+        prompt: 'ping',
+        model: preferred,
+        maxTokens: 2,
+      );
+      await stream.first.timeout(const Duration(milliseconds: 700));
+      stopwatch.stop();
+      if (stopwatch.elapsedMilliseconds < 2500) {
+        context.read<ChatBloc>().add(ChatModelVariantLoaded(
+              model: preferred,
+              isAutoSelected: true,
+            ));
+        Toasts.show('Auto-selected ${preferred.label}', context: context);
+        return;
       }
     } catch (_) {}
-    final fallback = available.contains(ModelVariant.q4)
-        ? ModelVariant.q4
-        : available.first;
+    final fallback = available.first;
     context.read<ChatBloc>().add(ChatModelVariantLoaded(
-          modelVariant: fallback,
+          model: fallback,
           isAutoSelected: true,
         ));
-    Toasts.show(
-        fallback == ModelVariant.fp16
-            ? 'Auto-switched to FP16 model'
-            : 'Auto-switched to Quantized model',
-        context: context);
+    Toasts.show('Auto-selected ${fallback.label}', context: context);
   }
 }
 
@@ -331,12 +335,11 @@ class _ChatComposer extends StatelessWidget {
 }
 
 class _ModelBadge extends StatelessWidget {
-  const _ModelBadge({required this.variant});
-  final ModelVariant variant;
+  const _ModelBadge({required this.model});
+  final ModelInfo model;
 
   @override
   Widget build(BuildContext context) {
-    final isFp16 = variant == ModelVariant.fp16;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
@@ -346,8 +349,7 @@ class _ModelBadge extends StatelessWidget {
           color: Theme.of(context).colorScheme.outline.withOpacity(0.7),
         ),
       ),
-      child: Text(isFp16 ? 'FP16' : 'Q4',
-          style: Theme.of(context).textTheme.labelMedium),
+      child: Text(model.label, style: Theme.of(context).textTheme.labelMedium),
     );
   }
 }
@@ -358,40 +360,30 @@ class _ModelToggle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final availableVariants = state.availableModelVariants;
-    final visibleVariants = availableVariants.isEmpty
-        ? ModelVariant.values
-        : availableVariants;
-    return PopupMenuButton<ModelVariant>(
+    final available = state.availableModels;
+    return PopupMenuButton<ModelInfo>(
       icon: const Icon(Icons.tune),
-      onSelected: (variant) async {
-        if (variant == state.modelVariant) return;
+      onSelected: (model) async {
+        if (model.id == state.selectedModel?.id) return;
         try {
-          await context.read<ChatRepository>().loadModel(variant: variant);
+          await context.read<ChatRepository>().loadModel(model: model);
           if (!context.mounted) return;
-          context.read<ChatBloc>().add(ChatModelVariantChanged(modelVariant: variant));
-          Toasts.show(
-              variant == ModelVariant.fp16 ? 'Loaded FP16 model' : 'Loaded Quantized model',
-              context: context);
+          context.read<ChatBloc>().add(ChatModelVariantChanged(model: model));
+          Toasts.show('Loaded ${model.label}', context: context);
         } catch (error) {
           if (!context.mounted) return;
           Toasts.show('Model load failed: $error', context: context);
         }
       },
-      itemBuilder: (context) => [
-        if (visibleVariants.contains(ModelVariant.fp16))
-          CheckedPopupMenuItem(
-            value: ModelVariant.fp16,
-            checked: state.modelVariant == ModelVariant.fp16,
-            child: const Text('FP16 (High quality)'),
-          ),
-        if (visibleVariants.contains(ModelVariant.q4))
-          CheckedPopupMenuItem(
-            value: ModelVariant.q4,
-            checked: state.modelVariant == ModelVariant.q4,
-            child: const Text('Q4 (Faster)'),
-          ),
-      ],
+      itemBuilder: (context) => available
+          .map(
+            (model) => CheckedPopupMenuItem(
+              value: model,
+              checked: model.id == state.selectedModel?.id,
+              child: Text(model.label),
+            ),
+          )
+          .toList(),
     );
   }
 }

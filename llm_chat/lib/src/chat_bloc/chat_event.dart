@@ -1,7 +1,7 @@
 import 'package:equatable/equatable.dart';
 
 import '../models/chat_conversation.dart';
-import '../models/model_variant.dart';
+import '../models/model_info.dart';
 
 class ChatEvent extends Equatable {
   const ChatEvent();
@@ -90,26 +90,26 @@ class ChatConversationsLoaded extends ChatEvent {
 
 class ChatModelVariantLoaded extends ChatEvent {
   const ChatModelVariantLoaded({
-    required this.modelVariant,
+    required this.model,
     required this.isAutoSelected,
   });
 
-  final ModelVariant modelVariant;
+  final ModelInfo model;
   final bool isAutoSelected;
 
   @override
-  List<Object?> get props => [modelVariant, isAutoSelected];
+  List<Object?> get props => [model, isAutoSelected];
 }
 
 class ChatModelVariantChanged extends ChatEvent {
   const ChatModelVariantChanged({
-    required this.modelVariant,
+    required this.model,
   });
 
-  final ModelVariant modelVariant;
+  final ModelInfo model;
 
   @override
-  List<Object?> get props => [modelVariant];
+  List<Object?> get props => [model];
 }
 
 class ChatReset extends ChatEvent {

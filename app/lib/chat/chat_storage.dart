@@ -5,13 +5,13 @@ class ChatStorageData {
   const ChatStorageData({
     required this.conversations,
     required this.activeConversationId,
-    required this.modelVariant,
+    required this.modelId,
     required this.isAutoSelected,
   });
 
   final List<ChatConversation> conversations;
   final String? activeConversationId;
-  final ModelVariant modelVariant;
+  final String? modelId;
   final bool isAutoSelected;
 }
 
@@ -33,7 +33,7 @@ class ChatStorage {
       return ChatStorageData(
         conversations: const [],
         activeConversationId: null,
-        modelVariant: _variantFromString(modelVariantRaw) ?? ModelVariant.q4,
+        modelId: modelVariantRaw,
         isAutoSelected: isAutoSelected,
       );
     }
@@ -46,7 +46,7 @@ class ChatStorage {
     return ChatStorageData(
       conversations: conversations,
       activeConversationId: activeId,
-      modelVariant: _variantFromString(modelVariantRaw) ?? ModelVariant.q4,
+      modelId: modelVariantRaw,
       isAutoSelected: isAutoSelected,
     );
   }
@@ -54,14 +54,14 @@ class ChatStorage {
   Future<void> save({
     required List<ChatConversation> conversations,
     required String? activeConversationId,
-    required ModelVariant modelVariant,
+    required String? modelId,
     required bool isAutoSelected,
   }) async {
     final box = await Hive.openBox<dynamic>(_boxName);
     final payload = conversations.map(_conversationToMap).toList();
     await box.put(_conversationsKey, payload);
     await box.put(_activeIdKey, activeConversationId);
-    await box.put(_modelVariantKey, modelVariant.name);
+    await box.put(_modelVariantKey, modelId);
     await box.put(_modelAutoKey, isAutoSelected);
   }
 
@@ -85,16 +85,6 @@ class ChatStorage {
               })
           .toList(),
     };
-  }
-
-  ModelVariant? _variantFromString(String? value) {
-    if (value == null) {
-      return null;
-    }
-    return ModelVariant.values.firstWhere(
-      (variant) => variant.name == value,
-      orElse: () => ModelVariant.q4,
-    );
   }
 
   ChatConversation _conversationFromMap(Map<String, dynamic> data) {

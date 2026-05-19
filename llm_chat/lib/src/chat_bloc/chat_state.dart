@@ -3,7 +3,7 @@ import 'package:equatable/equatable.dart';
 import '../models/chat_conversation.dart';
 import '../models/chat_message.dart';
 import '../models/chat_recap.dart';
-import '../models/model_variant.dart';
+import '../models/model_info.dart';
 
 class ChatState extends Equatable {
   const ChatState({
@@ -14,9 +14,9 @@ class ChatState extends Equatable {
     required this.error,
     required this.conversations,
     required this.activeConversationId,
-    required this.modelVariant,
+    required this.selectedModel,
     required this.isAutoSelectedModel,
-    required this.availableModelVariants,
+    required this.availableModels,
   });
 
   factory ChatState.initial() {
@@ -28,9 +28,9 @@ class ChatState extends Equatable {
       error: null,
       conversations: const [],
       activeConversationId: null,
-      modelVariant: ModelVariant.q4,
+      selectedModel: null,
       isAutoSelectedModel: true,
-      availableModelVariants: const [],
+      availableModels: const [],
     );
   }
 
@@ -41,9 +41,9 @@ class ChatState extends Equatable {
   final String? error;
   final List<ChatConversation> conversations;
   final String? activeConversationId;
-  final ModelVariant modelVariant;
+  final ModelInfo? selectedModel;
   final bool isAutoSelectedModel;
-  final List<ModelVariant> availableModelVariants;
+  final List<ModelInfo> availableModels;
 
   ChatState copyWith({
     List<ChatMessage>? messages,
@@ -53,9 +53,9 @@ class ChatState extends Equatable {
     String? error,
     List<ChatConversation>? conversations,
     String? activeConversationId,
-    ModelVariant? modelVariant,
+    ModelInfo? selectedModel,
     bool? isAutoSelectedModel,
-    List<ModelVariant>? availableModelVariants,
+    List<ModelInfo>? availableModels,
   }) {
     return ChatState(
       messages: messages ?? this.messages,
@@ -65,9 +65,9 @@ class ChatState extends Equatable {
       error: error,
       conversations: conversations ?? this.conversations,
       activeConversationId: activeConversationId ?? this.activeConversationId,
-      modelVariant: modelVariant ?? this.modelVariant,
+      selectedModel: selectedModel ?? this.selectedModel,
       isAutoSelectedModel: isAutoSelectedModel ?? this.isAutoSelectedModel,
-      availableModelVariants: availableModelVariants ?? this.availableModelVariants,
+      availableModels: availableModels ?? this.availableModels,
     );
   }
 
@@ -80,8 +80,8 @@ class ChatState extends Equatable {
         error,
         conversations,
         activeConversationId,
-        modelVariant,
+        selectedModel,
         isAutoSelectedModel,
-        availableModelVariants,
+        availableModels,
       ];
 }

@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/services.dart';
@@ -11,10 +10,9 @@ class RustChatRepository implements ChatRepository {
   bool _isModelReady = false;
   Object? _initError;
 
-  static const _modelsDirName = 'models/bundled';
-  static const _tokenizerAsset = 'assets/models/onnx/tokenizer.json';
-  static const _fp16Asset = 'assets/models/onnx/model_fp16.onnx';
-  static const _q4Asset = 'assets/models/onnx/model_q4.onnx';
+  static const _modelsDirName = 'models';
+  static const _modelsAssetPrefix = 'assets/models/onnx/';
+  static const _tokenizerFileName = 'tokenizer.json';
 
   RustChatRepository();
 
@@ -27,54 +25,56 @@ class RustChatRepository implements ChatRepository {
     return modelsDir;
   }
 
-  String _assetForVariant(ModelVariant variant) {
-    return variant == ModelVariant.fp16 ? _fp16Asset : _q4Asset;
-  }
-
-  String _fileNameForVariant(ModelVariant variant) {
-    return variant == ModelVariant.fp16 ? 'model_fp16.onnx' : 'model_q4.onnx';
-  }
-
-  Future<String> _ensureBundledAsset({
-    required String assetPath,
-    required String fileName,
-  }) async {
+  Future<void> _ensureBundledAssets() async {
     final dir = await _modelsDir();
-    final file = File('${dir.path}/$fileName');
-    if (await file.exists()) {
-      return file.path;
+    final manifest = await AssetManifest.loadFromAssetBundle(rootBundle);
+    final assets = manifest
+        .listAssets()
+        .where((asset) => asset.startsWith(_modelsAssetPrefix));
+    for (final asset in assets) {
+      final fileName = asset.substring(_modelsAssetPrefix.length);
+      if (fileName.isEmpty) {
+        continue;
+      }
+      final file = File('${dir.path}/$fileName');
+      if (await file.exists()) {
+        continue;
+      }
+      final data = await rootBundle.load(asset);
+      await file.writeAsBytes(data.buffer.asUint8List(), flush: true);
     }
-    final data = await rootBundle.load(assetPath);
-    await file.writeAsBytes(data.buffer.asUint8List(), flush: true);
-    return file.path;
   }
 
-  Future<String> _ensureBundledModel(ModelVariant variant) async {
-    return _ensureBundledAsset(
-      assetPath: _assetForVariant(variant),
-      fileName: _fileNameForVariant(variant),
-    );
-  }
-
-  Future<String> _ensureBundledTokenizer() async {
-    return _ensureBundledAsset(
-      assetPath: _tokenizerAsset,
-      fileName: 'tokenizer.json',
-    );
+  String _labelFromFileName(String name) {
+    var base = name.replaceAll('.onnx', '');
+    if (base.startsWith('model_')) {
+      base = base.substring('model_'.length);
+    }
+    final words = base.split('_').where((part) => part.isNotEmpty).toList();
+    if (words.isEmpty) {
+      return name;
+    }
+    final label = words
+        .map((word) => word.isEmpty
+            ? word
+            : '${word[0].toUpperCase()}${word.substring(1)}')
+        .join(' ');
+    return label;
   }
 
   @override
-  Future<void> loadModel({required ModelVariant variant}) async {
+  Future<void> loadModel({required ModelInfo model}) async {
     _isModelReady = false;
     _initError = null;
-    final modelPath = await _ensureBundledModel(variant);
-    final tokenizerPath = await _ensureBundledTokenizer();
+    await _ensureBundledAssets();
+    final modelPath = model.path;
+    final tokenizerPath = await _ensureTokenizerPath();
     await rust_api.initModel(modelPath: modelPath, tokenizerPath: tokenizerPath);
     _isModelReady = true;
   }
 
   @override
-  Future<void> ensureReady({required ModelVariant variant}) async {
+  Future<void> ensureReady({required ModelInfo model}) async {
     if (_isModelReady) {
       return;
     }
@@ -82,31 +82,52 @@ class RustChatRepository implements ChatRepository {
       throw _initError!;
     }
     try {
-      await loadModel(variant: variant);
+      await loadModel(model: model);
     } catch (error) {
       _initError = error;
       rethrow;
     }
   }
 
+  Future<String> _ensureTokenizerPath() async {
+    final dir = await _modelsDir();
+    final file = File('${dir.path}/$_tokenizerFileName');
+    if (!await file.exists()) {
+      throw Exception('Tokenizer not found at ${file.path}');
+    }
+    return file.path;
+  }
+
   @override
-  Future<List<ModelVariant>> availableModelVariants() async {
-    final manifest = await rootBundle.loadString('AssetManifest.json');
-    final assets = (jsonDecode(manifest) as Map<String, dynamic>).keys.toSet();
-    final variants = <ModelVariant>[];
-    if (assets.contains(_fp16Asset)) {
-      variants.add(ModelVariant.fp16);
+  Future<List<ModelInfo>> availableModels() async {
+    await _ensureBundledAssets();
+    final dir = await _modelsDir();
+    final files = await dir
+        .list()
+        .where((entity) => entity is File)
+        .cast<File>()
+        .where((file) => file.path.endsWith('.onnx'))
+        .toList();
+    files.sort((a, b) => a.path.compareTo(b.path));
+    final models = <ModelInfo>[];
+    for (var i = 0; i < files.length; i += 1) {
+      final file = files[i];
+      final name = file.uri.pathSegments.last;
+      final label = _labelFromFileName(name);
+      models.add(ModelInfo(
+        id: '${i + 1}',
+        label: label,
+        path: file.path,
+        index: i + 1,
+      ));
     }
-    if (assets.contains(_q4Asset)) {
-      variants.add(ModelVariant.q4);
-    }
-    return variants;
+    return models;
   }
 
   @override
   Stream<ChatChunk> generate({
     required String prompt,
-    required ModelVariant variant,
+    required ModelInfo model,
     int maxTokens = 128,
   }) {
     return rust_api

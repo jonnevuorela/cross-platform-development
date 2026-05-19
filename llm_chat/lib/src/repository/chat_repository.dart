@@ -1,17 +1,16 @@
 import '../models/chat_chunk.dart';
 import '../models/chat_message.dart';
-import '../models/model_variant.dart';
 
 abstract class ChatRepository {
-  Future<void> loadModel({required ModelVariant variant});
+  Future<void> loadModel({required ModelInfo model});
 
-  Future<void> ensureReady({required ModelVariant variant});
+  Future<void> ensureReady({required ModelInfo model});
 
-  Future<List<ModelVariant>> availableModelVariants();
+  Future<List<ModelInfo>> availableModels();
 
   Stream<ChatChunk> generate({
     required String prompt,
-    required ModelVariant variant,
+    required ModelInfo model,
     int maxTokens = 128,
   });
 

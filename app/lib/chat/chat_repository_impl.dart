@@ -2,29 +2,29 @@ import 'package:llm_chat/llm_chat.dart';
 
 class EchoChatRepository implements ChatRepository {
   @override
-  Future<void> loadModel({required ModelVariant variant}) async {
+  Future<void> loadModel({required ModelInfo model}) async {
     return;
   }
 
   @override
-  Future<void> ensureReady({required ModelVariant variant}) async {
+  Future<void> ensureReady({required ModelInfo model}) async {
     return;
   }
 
   @override
-  Future<List<ModelVariant>> availableModelVariants() async {
-    return ModelVariant.values;
+  Future<List<ModelInfo>> availableModels() async {
+    return [
+      ModelInfo(id: '1', label: 'Mock Model', path: '', index: 1),
+    ];
   }
 
   @override
   Stream<ChatChunk> generate({
     required String prompt,
-    required ModelVariant variant,
+    required ModelInfo model,
     int maxTokens = 128,
   }) async* {
-    final response = variant == ModelVariant.fp16
-        ? 'FP16 model echo: $prompt'
-        : 'Q4 model echo: $prompt';
+    final response = '${model.label} echo: $prompt';
     yield ChatChunk(text: response, isFinal: true);
   }
 
