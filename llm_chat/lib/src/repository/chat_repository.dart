@@ -1,5 +1,6 @@
 import '../models/chat_chunk.dart';
 import '../models/chat_message.dart';
+import '../models/model_info.dart';
 
 abstract class ChatRepository {
   Future<void> loadModel({required ModelInfo model});
