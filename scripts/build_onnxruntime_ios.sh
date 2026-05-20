@@ -40,7 +40,6 @@ cd onnxruntime
   --osx_arch arm64 \
   --apple_deploy_target 15.0 \
   --use_xnnpack \
-  --use_coreml \
   --minimal_build extended \
   --disable_ml_ops \
   --skip_tests \
