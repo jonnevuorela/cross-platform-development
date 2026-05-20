@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:llm_chat/llm_chat.dart';
@@ -379,12 +381,13 @@ class _ChatPageState extends State<ChatPage> {
     Toasts.show(message, context: context);
   }
 
+}
+
 class _ModelCandidate {
   _ModelCandidate({required this.model});
 
   final ModelInfo model;
   int? sizeBytes;
-}
 }
 
 class _ChatComposer extends StatelessWidget {
