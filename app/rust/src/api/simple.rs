@@ -52,12 +52,9 @@ pub fn init_model(model_path: String, tokenizer_path: String) -> Result<(), Erro
         let tokenizer = Tokenizer::from_file(tokenizer_path)
             .map_err(|e| Error::new(format!("Tokenizer error: {e}")))?;
 
-        let num_threads = std::thread::available_parallelism()
-            .map(|n| n.get())
-            .unwrap_or(4);
         let session = Session::builder()?
             .with_optimization_level(GraphOptimizationLevel::Level3)?
-            .with_intra_threads(num_threads)?
+            .with_intra_threads(4)?
             .commit_from_file(model_path)?;
 
         log_model_io(&session);
