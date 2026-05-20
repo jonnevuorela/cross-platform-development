@@ -162,7 +162,10 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
   }
 
   Future<void> _onReset(ChatReset event, Emitter<ChatState> emit) async {
-    emit(ChatState.initial());
+    emit(ChatState.initial().copyWith(
+      selectedModel: state.selectedModel,
+      availableModels: state.availableModels,
+    ));
   }
 
   void _onConversationsLoaded(
@@ -215,6 +218,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     if (!state.availableModels.any((model) => model.id == event.model.id)) {
       return;
     }
+    print('[BLoC] selectedModel changed to: ${event.model.label}');
     emit(state.copyWith(
       selectedModel: event.model,
       isAutoSelectedModel: false,
@@ -422,40 +426,20 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
   }) {
     final buffer = StringBuffer();
 
-    buffer.writeln('<|im_start|>system');
-    buffer.writeln('You are a helpful AI assistant named SmolLM, trained by Hugging Face.');
     if (recap.isNotEmpty) {
-      buffer.writeln('');
       buffer.writeln('Conversation recap: $recap');
     }
-    buffer.writeln('<|im_end|>');
 
     final tailStart = history.length > recentTailCount
         ? history.length - recentTailCount
         : 0;
 
     for (final message in history.sublist(tailStart)) {
-      final roleName = message.role == ChatRole.user ? 'user' : 'assistant';
-      buffer.writeln('<|im_start|>$roleName');
-      buffer.writeln(message.content);
-      buffer.writeln('<|im_end|>');
+      final roleName = message.role == ChatRole.user ? 'User' : 'Assistant';
+      buffer.writeln('$roleName: ${message.content}');
     }
 
-    buffer.writeln('<|im_start|>assistant');
-    buffer.writeln('<think>');
-    buffer.writeln('');
-    buffer.writeln('</think>');
-    return buffer.toString();
+    return buffer.toString().trim();
   }
 
-  String _roleLabel(ChatRole role) {
-    switch (role) {
-      case ChatRole.system:
-        return 'System';
-      case ChatRole.user:
-        return 'User';
-      case ChatRole.assistant:
-        return 'Assistant';
-    }
-  }
 }

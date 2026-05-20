@@ -52,9 +52,12 @@ pub fn init_model(model_path: String, tokenizer_path: String) -> Result<(), Erro
         let tokenizer = Tokenizer::from_file(tokenizer_path)
             .map_err(|e| Error::new(format!("Tokenizer error: {e}")))?;
 
+        let num_threads = std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(4);
         let session = Session::builder()?
             .with_optimization_level(GraphOptimizationLevel::Level3)?
-            .with_intra_threads(4)?
+            .with_intra_threads(num_threads)?
             .commit_from_file(model_path)?;
 
         log_model_io(&session);
@@ -106,48 +109,102 @@ fn encode_text(tokenizer: &Tokenizer, text: &str) -> Result<Vec<i64>, Error> {
     Ok(enc.get_ids().iter().map(|&id| id as i64).collect())
 }
 
+fn strip_label_prefix(text: &str) -> Option<&str> {
+    let text = text.trim_start();
+    let col_idx = text.find(':')?;
+    let prefix = text[..col_idx].trim();
+    if prefix.len() < 60
+        && !prefix.is_empty()
+        && !prefix.contains('.')
+        && !prefix.contains('!')
+        && !prefix.contains('?')
+        && !prefix.contains('\n')
+    {
+        let after = text[col_idx + 1..].trim_start();
+        if !after.is_empty() {
+            return Some(after);
+        }
+    }
+    None
+}
+
+fn remove_self_intro(text: &str) -> Option<String> {
+    let trimmed = text.trim_start();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let head = &trimmed[..trimmed.len().min(200)];
+    let intro_patterns: &[&str] = &[
+        "I am a helpful",
+        "I am an AI",
+        "I'm an AI",
+        "I'm a helpful",
+        "I am SmolLM",
+        "I'm SmolLM",
+        "I am here to",
+        "I'm here to",
+        "As an AI",
+        "As a language model",
+        "I am a large language",
+        "I'm a large language",
+    ];
+    let has_intro = intro_patterns.iter().any(|p| head.starts_with(p));
+    if !has_intro {
+        return None;
+    }
+    let boundaries: &[&str] = &[". ", ".\n", "!\n", "?\n", "\n\n"];
+    for b in boundaries {
+        if let Some(pos) = trimmed.find(b) {
+            let rest = trimmed[pos + b.len()..].trim_start();
+            if !rest.is_empty() {
+                return Some(rest.to_string());
+            }
+        }
+    }
+    Some(String::new())
+}
+
 fn run_generate(prompt: &str, max_tokens: u32, sink: Option<&StreamSink<String>>) -> Result<Vec<String>, Error> {
     let tokenizer = TOKENIZER.get().ok_or_else(|| Error::new("Tokenizer not initialized"))?;
-
-    let system_prompt = "You are a helpful assistant. Answer concisely and stop when done. /no_think";
-    let system_ids = encode_text(tokenizer, system_prompt)?;
-    let user_ids = encode_text(tokenizer, prompt)?;
-    let role_system = encode_text(tokenizer, "system")?;
-    let role_user = encode_text(tokenizer, "user")?;
-    let role_assistant = encode_text(tokenizer, "assistant")?;
     let newline_ids = encode_text(tokenizer, "\n")?;
 
-    let mut all_ids: Vec<i64> = Vec::with_capacity(
-        1 + role_system.len() + newline_ids.len() + system_ids.len() + 1 + newline_ids.len()
-            + 1 + role_user.len() + newline_ids.len() + user_ids.len() + 1 + newline_ids.len()
-            + 1 + role_assistant.len() + newline_ids.len(),
-    );
-    // System: <|im_start|>system\n{content}<|im_end|>\n
-    all_ids.push(IM_START);
-    all_ids.extend(&role_system);
-    all_ids.extend(&newline_ids);
-    all_ids.extend(&system_ids);
-    all_ids.push(IM_END);
-    all_ids.extend(&newline_ids);
-    // User: <|im_start|>user\n{content}<|im_end|>\n
-    all_ids.push(IM_START);
-    all_ids.extend(&role_user);
-    all_ids.extend(&newline_ids);
-    all_ids.extend(&user_ids);
-    all_ids.push(IM_END);
-    all_ids.extend(&newline_ids);
-    // Assistant generation prompt: <|im_start|>assistant\n
-    all_ids.push(IM_START);
-    all_ids.extend(&role_assistant);
-    all_ids.extend(&newline_ids);
-    if all_ids.is_empty() {
+    let system_prompt = "You are a helpful assistant. Answer concisely and stop when done.";
+    let user_message = prompt.trim();
+
+    if user_message.is_empty() {
         return Ok(vec![]);
     }
+
+    let mut all_ids = Vec::new();
+
+    // System message
+    all_ids.push(IM_START);
+    all_ids.extend(&encode_text(tokenizer, "system")?);
+    all_ids.extend(&newline_ids);
+    all_ids.extend(&encode_text(tokenizer, system_prompt)?);
+    all_ids.push(IM_END);
+    all_ids.extend(&newline_ids);
+
+    // User message
+    all_ids.push(IM_START);
+    all_ids.extend(&encode_text(tokenizer, "user")?);
+    all_ids.extend(&newline_ids);
+    all_ids.extend(&encode_text(tokenizer, user_message)?);
+    all_ids.push(IM_END);
+    all_ids.extend(&newline_ids);
+
+    // Assistant prompt
+    all_ids.push(IM_START);
+    all_ids.extend(&encode_text(tokenizer, "assistant")?);
+    all_ids.extend(&newline_ids);
 
     let mut kv_cache = KvCache::new();
     let mut output_tokens = Vec::new();
     let max_steps = max_tokens as usize;
     const REPETITION_PENALTY: f32 = 1.15;
+
+    let mut prefix_buf = String::new();
+    let mut prefix_resolved = false;
 
     for step in 0..max_steps {
         let (input_ids, past_seq_len) = if step == 0 {
@@ -177,11 +234,7 @@ fn run_generate(prompt: &str, max_tokens: u32, sink: Option<&StreamSink<String>>
             (data, new_len)
         };
 
-        let seq_len_for_logits = if step == 0 {
-            new_seq_len
-        } else {
-            new_seq_len
-        };
+        let seq_len_for_logits = new_seq_len;
 
         let vocab_size = 128256;
         let total_logits = seq_len_for_logits * vocab_size;
@@ -194,6 +247,9 @@ fn run_generate(prompt: &str, max_tokens: u32, sink: Option<&StreamSink<String>>
         let mut logits_vec: Vec<(usize, f32)> = slice.iter().copied().enumerate().collect();
         let local_ids = &all_ids[all_ids.len().saturating_sub(50)..];
         for (idx, val) in logits_vec.iter_mut() {
+            if *idx >= 128000 {
+                continue;
+            }
             if local_ids.contains(&(*idx as i64)) {
                 *val /= REPETITION_PENALTY;
             }
@@ -207,15 +263,55 @@ fn run_generate(prompt: &str, max_tokens: u32, sink: Option<&StreamSink<String>>
         let piece = tokenizer
             .decode(std::slice::from_ref(&(token_id as u32)), true)
             .map_err(|e| Error::new(format!("Tokenizer error: {e}")))?;
+
         if let Some(s) = sink {
-            if s.add(piece.clone()).is_err() {
+            if !prefix_resolved {
+                prefix_buf.push_str(&piece);
+                if let Some(stripped) = strip_label_prefix(&prefix_buf) {
+                    prefix_resolved = true;
+                    if !stripped.is_empty() {
+                        if s.add(stripped.to_string()).is_err() {
+                            break;
+                        }
+                    }
+                    continue;
+                }
+                let has_boundary = prefix_buf.contains('.')
+                    || prefix_buf.contains('!')
+                    || prefix_buf.contains('?')
+                    || prefix_buf.contains('\n');
+                if has_boundary || prefix_buf.len() > 80 {
+                    prefix_resolved = true;
+                    if let Some(stripped) = remove_self_intro(&prefix_buf) {
+                        if !stripped.is_empty() {
+                            if s.add(stripped).is_err() {
+                                break;
+                            }
+                        }
+                    } else if s.add(prefix_buf.clone()).is_err() {
+                        break;
+                    }
+                }
+            } else if s.add(piece.clone()).is_err() {
                 break;
             }
         }
         output_tokens.push(piece);
     }
 
-    Ok(output_tokens)
+    if let Some(s) = sink {
+        if !prefix_resolved && !prefix_buf.is_empty() {
+            let _ = s.add(prefix_buf.clone());
+        }
+    }
+
+    let full_output = output_tokens.join("");
+    let mut result = full_output;
+    if let Some(stripped) = strip_label_prefix(&result) {
+        result = stripped.to_string();
+    }
+    result = remove_self_intro(&result).unwrap_or(result);
+    Ok(vec![result])
 }
 
 fn build_inputs(

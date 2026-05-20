@@ -317,6 +317,7 @@ class _ChatPageState extends State<ChatPage> {
 
   Future<void> _probeAndSelectModel(
     BuildContext context, ChatState state) async {
+    return; // diagnostic: skip probe
     final repository = context.read<ChatRepository>();
     final available = await repository.availableModels();
     if (available.isEmpty) {
@@ -365,10 +366,10 @@ class _ChatPageState extends State<ChatPage> {
           model: candidate.model,
           maxTokens: 8,
         );
-        await stream.first.timeout(const Duration(milliseconds: 2000));
+        await stream.first.timeout(const Duration(milliseconds: 5000));
         stopwatch.stop();
         if (!context.mounted) return;
-        if (stopwatch.elapsedMilliseconds < 2500) {
+        if (stopwatch.elapsedMilliseconds < 6000) {
           context.read<ChatBloc>().add(ChatModelVariantLoaded(
                 model: candidate.model,
                 isAutoSelected: true,
