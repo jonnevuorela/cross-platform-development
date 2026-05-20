@@ -22,7 +22,15 @@ class RustChatRepository implements ChatRepository {
     if (!await modelsDir.exists()) {
       await modelsDir.create(recursive: true);
     }
+    await _removeLegacyBundledDir(modelsDir);
     return modelsDir;
+  }
+
+  Future<void> _removeLegacyBundledDir(Directory modelsDir) async {
+    final legacyDir = Directory('${modelsDir.path}/bundled');
+    if (await legacyDir.exists()) {
+      await legacyDir.delete(recursive: true);
+    }
   }
 
   Future<void> _ensureBundledAssets() async {
@@ -41,8 +49,7 @@ class RustChatRepository implements ChatRepository {
       if (await file.exists()) {
         continue;
       }
-      final data = await rootBundle.load(asset);
-      await file.writeAsBytes(data.buffer.asUint8List(), flush: true);
+      await _copyAssetToFile(asset, file);
     }
   }
 
@@ -51,6 +58,27 @@ class RustChatRepository implements ChatRepository {
       return true;
     }
     return assetPath.endsWith('.onnx') || assetPath.endsWith('.onnx_data');
+  }
+
+  Future<void> _copyAssetToFile(String assetPath, File destination) async {
+    if (Platform.isIOS && assetPath.endsWith('.onnx_data')) {
+      final bundlePath = _iosBundleAssetPath(assetPath);
+      final bundleFile = File(bundlePath);
+      if (await bundleFile.exists()) {
+        final sink = destination.openWrite();
+        await bundleFile.openRead().pipe(sink);
+        await sink.flush();
+        await sink.close();
+        return;
+      }
+    }
+    final data = await rootBundle.load(assetPath);
+    await destination.writeAsBytes(data.buffer.asUint8List(), flush: true);
+  }
+
+  String _iosBundleAssetPath(String assetPath) {
+    final bundlePath = Directory(Platform.resolvedExecutable).parent.path;
+    return '$bundlePath/Frameworks/App.framework/flutter_assets/$assetPath';
   }
 
   String _labelFromFileName(String name) {
