@@ -36,10 +36,11 @@ cd onnxruntime
   --config RelWithDebInfo \
   --use_xcode \
   --ios \
-  --ios_sysroot iphoneos \
+  --apple_sysroot iphoneos \
   --osx_arch arm64 \
   --apple_deploy_target 15.0 \
   --use_xnnpack \
+  --use_coreml \
   --minimal_build extended \
   --disable_ml_ops \
   --disable_exceptions \
@@ -48,14 +49,13 @@ cd onnxruntime
 BUILD_OUTPUT="build/iOS/RelWithDebInfo"
 
 # Copy the built static library
-LIB=$(find "$BUILD_OUTPUT" -name "libonnxruntime*.a" -maxdepth 3 | head -1)
+# Search for monolithic .a, or individual .a, or framework binary
+LIB=$(find "$BUILD_OUTPUT" -maxdepth 4 \( -name "libonnxruntime*.a" -o -path "*/onnxruntime.framework/onnxruntime" \) | head -1)
 if [ -n "$LIB" ]; then
   cp "$LIB" "$OUT_DIR/libonnxruntime.a"
-elif [ -f "$BUILD_OUTPUT/onnxruntime.framework/onnxruntime" ]; then
-  cp "$BUILD_OUTPUT/onnxruntime.framework/onnxruntime" "$OUT_DIR/libonnxruntime.a"
 else
-  echo "Error: libonnxruntime.a not found in $BUILD_OUTPUT"
-  find "$BUILD_OUTPUT" -name "*.a" -maxdepth 4
+  echo "Error: static library not found in $BUILD_OUTPUT"
+  find "$BUILD_OUTPUT" -maxdepth 4 \( -name "*.a" -o -name "onnxruntime" -type f \)
   exit 1
 fi
 
