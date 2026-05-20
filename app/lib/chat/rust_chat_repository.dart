@@ -67,9 +67,6 @@ class RustChatRepository implements ChatRepository {
   }
 
   Future<void> _ensureExternalDataFiles(Directory modelsDir) async {
-    if (!Platform.isIOS) {
-      return;
-    }
     final onnxFiles = await modelsDir
         .list()
         .where((entity) => entity is File)
@@ -83,20 +80,36 @@ class RustChatRepository implements ChatRepository {
         continue;
       }
       final fileName = dataFile.uri.pathSegments.last;
-      final bundleFile = File(_iosBundleResourcePath(fileName));
-      if (!await bundleFile.exists()) {
+      final sourceFile = await _findOnnxDataSource(fileName);
+      if (sourceFile == null) {
         continue;
       }
       final sink = dataFile.openWrite();
-      await bundleFile.openRead().pipe(sink);
+      await sourceFile.openRead().pipe(sink);
       await sink.flush();
       await sink.close();
     }
   }
 
-  String _iosBundleResourcePath(String fileName) {
-    final bundlePath = Directory(Platform.resolvedExecutable).parent.path;
-    return '$bundlePath/$fileName';
+  Future<File?> _findOnnxDataSource(String fileName) async {
+    if (Platform.isIOS) {
+      final bundlePath = Directory(Platform.resolvedExecutable).parent.path;
+      final bundleFile = File('$bundlePath/$fileName');
+      if (await bundleFile.exists()) {
+        return bundleFile;
+      }
+    }
+    final cwd = Directory.current.path;
+    final relativeFile = File('$cwd/assets/models/onnx/$fileName');
+    if (await relativeFile.exists()) {
+      return relativeFile;
+    }
+    final exeDir = Directory(Platform.resolvedExecutable).parent.path;
+    final exeRelative = File('$exeDir/assets/models/onnx/$fileName');
+    if (await exeRelative.exists()) {
+      return exeRelative;
+    }
+    return null;
   }
 
   String _labelFromFileName(String name) {

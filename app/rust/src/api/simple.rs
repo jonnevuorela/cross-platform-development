@@ -44,7 +44,7 @@ pub fn init_app() {
     flutter_rust_bridge::setup_default_user_utils();
 }
 
-static SESSION: OnceCell<std::sync::Mutex<Session>> = OnceCell::new();
+static SESSION: std::sync::Mutex<Option<Session>> = std::sync::Mutex::new(None);
 static TOKENIZER: OnceCell<Tokenizer> = OnceCell::new();
 
 pub fn init_model(model_path: String, tokenizer_path: String) -> Result<(), Error> {
@@ -60,7 +60,7 @@ pub fn init_model(model_path: String, tokenizer_path: String) -> Result<(), Erro
         log_model_io(&session);
 
         let _ = TOKENIZER.set(tokenizer);
-        let _ = SESSION.set(std::sync::Mutex::new(session));
+        *SESSION.lock().map_err(|e| Error::new(format!("Session lock: {e}")))? = Some(session);
         Ok(())
     })();
 
@@ -96,9 +96,6 @@ pub fn generate_stream(
 }
 
 fn run_generate(prompt: &str, max_tokens: u32, sink: Option<&StreamSink<String>>) -> Result<Vec<String>, Error> {
-    let session = SESSION
-        .get()
-        .ok_or_else(|| Error::new("Model not initialized"))?;
     let tokenizer = TOKENIZER.get().ok_or_else(|| Error::new("Tokenizer not initialized"))?;
 
     let encoding = tokenizer
@@ -127,16 +124,19 @@ fn run_generate(prompt: &str, max_tokens: u32, sink: Option<&StreamSink<String>>
         let kv_seq_len = past_seq_len.max(1);
 
         let (logits, new_seq_len): (Vec<f32>, usize) = {
-            let mut session = session
+            let mut session_guard = SESSION
                 .lock()
                 .map_err(|_| Error::new("Session lock poisoned"))?;
+            let session = session_guard
+                .as_mut()
+                .ok_or_else(|| Error::new("Model not initialized"))?;
             let input_specs: Vec<(String, ValueType)> = session
                 .inputs()
                 .iter()
                 .map(|input| (input.name().to_string(), input.dtype().clone()))
                 .collect();
             let inputs = build_inputs(&input_specs, &input_ids, &kv_cache, kv_seq_len)?;
-            let outputs = Session::run(&mut *session, inputs)?;
+            let outputs = Session::run(session, inputs)?;
             let (data, new_len) = extract_logits_and_kv(outputs.iter(), &mut kv_cache)?;
             (data, new_len)
         };
@@ -226,12 +226,20 @@ fn build_inputs(
                 let numel = shape.iter().map(|d| *d as usize).product::<usize>();
 
                 if kv_seq_len > 0 && !kv_cache.keys[layer].is_empty() {
-                    let data = if is_key {
+                    let raw_data = if is_key {
                         kv_cache.keys[layer].clone()
                     } else {
                         kv_cache.values[layer].clone()
                     };
-                    Some(Tensor::from_array((shape, data))?.into())
+                    let elem_type = tensor_elem_type(dtype)?;
+                    Some(match elem_type {
+                        TensorElementType::Float16 => {
+                            let f16_data: Vec<f16> =
+                                raw_data.iter().map(|v| f16::from_f32(*v)).collect();
+                            Tensor::from_array((shape, f16_data))?.into()
+                        }
+                        _ => Tensor::from_array((shape, raw_data))?.into(),
+                    })
                 } else {
                     let elem_type = tensor_elem_type(dtype)?;
                     Some(match elem_type {
@@ -252,6 +260,15 @@ fn build_inputs(
     Ok(inputs_vec)
 }
 
+fn extract_tensor_flexible(val: &ort::value::ValueRef) -> Result<(Vec<i64>, Vec<f32>), Error> {
+    if let Ok((shape, data)) = val.try_extract_tensor::<f16>() {
+        let f32_data: Vec<f32> = data.iter().map(|v| v.to_f32()).collect();
+        return Ok((shape.to_vec(), f32_data));
+    }
+    let (shape, data) = val.try_extract_tensor::<f32>()?;
+    Ok((shape.to_vec(), data.to_vec()))
+}
+
 fn extract_logits_and_kv<'a>(
     outputs: impl Iterator<Item = (&'a str, ort::value::ValueRef<'a>)>,
     kv_cache: &mut KvCache,
@@ -266,7 +283,7 @@ fn extract_logits_and_kv<'a>(
         }
         let s = name.to_string();
         if s.starts_with("present.") {
-            let (shape, data) = val.try_extract_tensor::<f32>()?;
+            let (shape, data) = extract_tensor_flexible(val)?;
             if shape.len() >= 2 {
                 let current_seq = shape[1] as usize;
                 if current_seq > seq_len {
