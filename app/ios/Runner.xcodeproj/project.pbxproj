@@ -44,8 +44,8 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		10D4F2982C39F2B700B7B1F7 /* model_fp16.onnx_data */ = {isa = PBXFileReference; lastKnownFileType = file; name = model_fp16.onnx_data; path = "../assets/models/onnx/model_fp16.onnx_data"; sourceTree = "<group>"; };
-		10D4F2992C39F2B700B7B1F7 /* model_q4.onnx_data */ = {isa = PBXFileReference; lastKnownFileType = file; name = model_q4.onnx_data; path = "../assets/models/onnx/model_q4.onnx_data"; sourceTree = "<group>"; };
+		10D4F2982C39F2B700B7B1F7 /* model_fp16.onnx_data */ = {isa = PBXFileReference; lastKnownFileType = file; name = model_fp16.onnx_data; path = "../assets/models/onnx/model_fp16.onnx_data"; sourceTree = SOURCE_ROOT; };
+		10D4F2992C39F2B700B7B1F7 /* model_q4.onnx_data */ = {isa = PBXFileReference; lastKnownFileType = file; name = model_q4.onnx_data; path = "../assets/models/onnx/model_q4.onnx_data"; sourceTree = SOURCE_ROOT; };
 		1498D2321E8E86230040F4C2 /* GeneratedPluginRegistrant.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GeneratedPluginRegistrant.h; sourceTree = "<group>"; };
 		1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = GeneratedPluginRegistrant.m; sourceTree = "<group>"; };
 		149FA7860656CD74584C3C0A /* Pods-RunnerTests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RunnerTests.debug.xcconfig"; path = "Target Support Files/Pods-RunnerTests/Pods-RunnerTests.debug.xcconfig"; sourceTree = "<group>"; };
