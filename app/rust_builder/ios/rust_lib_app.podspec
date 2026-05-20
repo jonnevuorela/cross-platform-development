@@ -29,7 +29,7 @@ A new Flutter FFI plugin project.
   s.script_phases = [
     {
       :name => 'Build Rust library',
-      :script => 'sh "$PODS_TARGET_SRCROOT/../cargokit/build_pod.sh" ../../rust rust_lib_app',
+      :script => 'ORT_LIB_PATH="${PODS_TARGET_SRCROOT}/../../rust/onnxruntime_ios" sh "$PODS_TARGET_SRCROOT/../cargokit/build_pod.sh" ../../rust rust_lib_app',
       :execution_position => :before_compile,
       :input_files => ['${BUILT_PRODUCTS_DIR}/cargokit_phony'],
       :output_files => ["${PODS_CONFIGURATION_BUILD_DIR}/${PRODUCT_NAME}/librust_lib_app.a"],
