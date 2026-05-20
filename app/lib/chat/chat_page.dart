@@ -8,6 +8,13 @@ import 'package:system_info2/system_info2.dart';
 import 'chat_storage.dart';
 import '../ui/toast.dart';
 
+class _ModelCandidate {
+  _ModelCandidate({required this.model});
+
+  final ModelInfo model;
+  int? sizeBytes;
+}
+
 class ChatPage extends StatefulWidget {
   const ChatPage({super.key});
 
@@ -381,13 +388,6 @@ class _ChatPageState extends State<ChatPage> {
     Toasts.show(message, context: context);
   }
 
-}
-
-class _ModelCandidate {
-  _ModelCandidate({required this.model});
-
-  final ModelInfo model;
-  int? sizeBytes;
 }
 
 class _ChatComposer extends StatelessWidget {
