@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:llm_chat/llm_chat.dart';
+import 'package:system_info2/system_info2.dart';
 
 import 'chat_storage.dart';
 import '../ui/toast.dart';
@@ -18,6 +19,7 @@ class _ChatPageState extends State<ChatPage> {
   final ChatStorage _storage = ChatStorage();
   ChatStorageData? _storageData;
   bool _didInit = false;
+  String? _memorySummary;
 
   @override
   void initState() {
@@ -25,6 +27,40 @@ class _ChatPageState extends State<ChatPage> {
     _storage.load().then((data) {
       if (mounted) setState(() => _storageData = data);
     });
+    _loadMemorySummary();
+  }
+
+  Future<void> _loadMemorySummary() async {
+    try {
+      final total = SysInfo.getTotalPhysicalMemory();
+      final free = SysInfo.getFreePhysicalMemory();
+      if (!mounted) return;
+      setState(() {
+        _memorySummary =
+            '${_formatBytes(free)} free / ${_formatBytes(total)} total';
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _memorySummary = null;
+      });
+    }
+  }
+
+  String _formatBytes(int bytes) {
+    const unit = 1024;
+    if (bytes < unit) return '${bytes} B';
+    final prefixes = ['KB', 'MB', 'GB', 'TB'];
+    var value = bytes.toDouble();
+    var index = -1;
+    while (value >= unit && index < prefixes.length - 1) {
+      value /= unit;
+      index += 1;
+    }
+    if (index < 0) {
+      return '${bytes} B';
+    }
+    return '${value.toStringAsFixed(1)} ${prefixes[index]}';
   }
 
   @override
@@ -112,6 +148,32 @@ class _ChatPageState extends State<ChatPage> {
             body: Column(
               children: [
                 if (state.isLoadingModel) const LinearProgressIndicator(),
+                if (_memorySummary != null)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                    child: Row(
+                      children: [
+                        Icon(Icons.memory,
+                            size: 16,
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onSurface
+                                .withOpacity(0.65)),
+                        const SizedBox(width: 6),
+                        Text(
+                          'RAM: $_memorySummary',
+                          style: Theme.of(context)
+                              .textTheme
+                              .labelSmall
+                              ?.copyWith(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurface
+                                      .withOpacity(0.75)),
+                        ),
+                      ],
+                    ),
+                  ),
                 if (state.isStreaming)
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -251,33 +313,78 @@ class _ChatPageState extends State<ChatPage> {
     if (available.isEmpty) {
       return;
     }
-    final stopwatch = Stopwatch()..start();
-    try {
-      final preferred = state.selectedModel ?? available.first;
-      await repository.loadModel(model: preferred);
-      final stream = repository.generate(
-        prompt: 'ping',
-        model: preferred,
-        maxTokens: 2,
-      );
-      await stream.first.timeout(const Duration(milliseconds: 700));
-      stopwatch.stop();
-      if (stopwatch.elapsedMilliseconds < 2500) {
-        context.read<ChatBloc>().add(ChatModelVariantLoaded(
-              model: preferred,
-              isAutoSelected: true,
-            ));
-        Toasts.show('Auto-selected ${preferred.label}', context: context);
-        return;
+    final candidates = List<ModelInfo>.from(available);
+    final sizedCandidates = <_ModelCandidate>[];
+    for (final model in candidates) {
+      sizedCandidates.add(_ModelCandidate(model: model));
+    }
+    for (final candidate in sizedCandidates) {
+      try {
+        final modelFile = File(candidate.model.path);
+        final modelSize = await modelFile.length();
+        final dataPath = candidate.model.path.replaceAll('.onnx', '.onnx_data');
+        final dataFile = File(dataPath);
+        final dataSize = await dataFile.length();
+        candidate.sizeBytes = modelSize + dataSize;
+      } catch (_) {
+        candidate.sizeBytes = null;
       }
-    } catch (_) {}
-    final fallback = available.first;
-    context.read<ChatBloc>().add(ChatModelVariantLoaded(
-          model: fallback,
-          isAutoSelected: true,
-        ));
-    Toasts.show('Auto-selected ${fallback.label}', context: context);
+    }
+    for (final candidate in sizedCandidates) {
+      final sizeBytes = candidate.sizeBytes;
+      if (sizeBytes == null) {
+        continue;
+      }
+      final sizeMb = (sizeBytes / (1024 * 1024)).toStringAsFixed(1);
+      print('[LLM] probe candidate: ${candidate.model.label} (${sizeMb} MB)');
+    }
+    sizedCandidates.sort((a, b) {
+      final aSize = a.sizeBytes ?? -1;
+      final bSize = b.sizeBytes ?? -1;
+      if (aSize != bSize) {
+        return aSize.compareTo(bSize);
+      }
+      return a.model.label.compareTo(b.model.label);
+    });
+    Object? lastError;
+    for (final candidate in sizedCandidates) {
+      final stopwatch = Stopwatch()..start();
+      try {
+        await repository.loadModel(model: candidate.model);
+        final stream = repository.generate(
+          prompt: 'ping',
+          model: candidate.model,
+          maxTokens: 2,
+        );
+        await stream.first.timeout(const Duration(milliseconds: 700));
+        stopwatch.stop();
+        if (!context.mounted) return;
+        if (stopwatch.elapsedMilliseconds < 2500) {
+          context.read<ChatBloc>().add(ChatModelVariantLoaded(
+                model: candidate.model,
+                isAutoSelected: true,
+              ));
+          Toasts.show('Auto-selected ${candidate.model.label}',
+              context: context);
+          return;
+        }
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    if (!context.mounted) return;
+    final message = lastError == null
+        ? 'No models responded during probe.'
+        : 'Model probe failed. Check logs.';
+    Toasts.show(message, context: context);
   }
+
+class _ModelCandidate {
+  _ModelCandidate({required this.model});
+
+  final ModelInfo model;
+  int? sizeBytes;
+}
 }
 
 class _ChatComposer extends StatelessWidget {
