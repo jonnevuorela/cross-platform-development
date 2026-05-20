@@ -197,6 +197,7 @@
 			buildConfigurationList = 97C147051CF9000F007C117D /* Build configuration list for PBXNativeTarget "Runner" */;
 			buildPhases = (
 				872F6CA31D1673852D2F8C05 /* [CP] Check Pods Manifest.lock */,
+				10D4F29C2C39F4B900B7B1F7 /* Copy ONNX Data */,
 				9740EEB61CF901F6004384FC /* Run Script */,
 				97C146EA1CF9000F007C117D /* Sources */,
 				97C146EB1CF9000F007C117D /* Frameworks */,
@@ -277,6 +278,25 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
+		10D4F29C2C39F4B900B7B1F7 /* Copy ONNX Data */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"${PROJECT_DIR}/../assets/models/onnx/model_fp16.onnx_data",
+				"${PROJECT_DIR}/../assets/models/onnx/model_q4.onnx_data",
+			);
+			name = "Copy ONNX Data";
+			outputPaths = (
+				"${TARGET_BUILD_DIR}/${FULL_PRODUCT_NAME}/model_fp16.onnx_data",
+				"${TARGET_BUILD_DIR}/${FULL_PRODUCT_NAME}/model_q4.onnx_data",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -euo pipefail\nMODEL_DIR=\"${PROJECT_DIR}/../assets/models/onnx\"\nAPP_DIR=\"${TARGET_BUILD_DIR}/${FULL_PRODUCT_NAME}\"\ncp -f \"${MODEL_DIR}/model_fp16.onnx_data\" \"${APP_DIR}/\"\ncp -f \"${MODEL_DIR}/model_q4.onnx_data\" \"${APP_DIR}/\"\n";
+			showEnvVarsInLog = 0;
+		};
 		356196565C5081A0BBB31EF0 /* [CP] Check Pods Manifest.lock */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
