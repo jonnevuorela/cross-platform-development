@@ -363,9 +363,9 @@ class _ChatPageState extends State<ChatPage> {
         final stream = repository.generate(
           prompt: 'ping',
           model: candidate.model,
-          maxTokens: 2,
+          maxTokens: 8,
         );
-        await stream.first.timeout(const Duration(milliseconds: 700));
+        await stream.first.timeout(const Duration(milliseconds: 2000));
         stopwatch.stop();
         if (!context.mounted) return;
         if (stopwatch.elapsedMilliseconds < 2500) {

@@ -98,6 +98,11 @@ class RustChatRepository implements ChatRepository {
       if (await bundleFile.exists()) {
         return bundleFile;
       }
+      final docsDir = await getApplicationDocumentsDirectory();
+      final docsFile = File('${docsDir.path}/$fileName');
+      if (await docsFile.exists()) {
+        return docsFile;
+      }
     }
     final cwd = Directory.current.path;
     final relativeFile = File('$cwd/assets/models/onnx/$fileName');

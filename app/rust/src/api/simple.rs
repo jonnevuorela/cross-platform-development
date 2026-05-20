@@ -95,23 +95,59 @@ pub fn generate_stream(
     }
 }
 
+const IM_START: i64 = 128011;
+const IM_END: i64 = 128012;
+const EOS_ID: i64 = 128001;
+
+fn encode_text(tokenizer: &Tokenizer, text: &str) -> Result<Vec<i64>, Error> {
+    let enc = tokenizer
+        .encode(text, false)
+        .map_err(|e| Error::new(format!("Tokenizer error: {e}")))?;
+    Ok(enc.get_ids().iter().map(|&id| id as i64).collect())
+}
+
 fn run_generate(prompt: &str, max_tokens: u32, sink: Option<&StreamSink<String>>) -> Result<Vec<String>, Error> {
     let tokenizer = TOKENIZER.get().ok_or_else(|| Error::new("Tokenizer not initialized"))?;
 
-    let encoding = tokenizer
-        .encode(prompt.to_string(), true)
-        .map_err(|e| Error::new(format!("Tokenizer error: {e}")))?;
-    let mut all_ids: Vec<i64> = encoding.get_ids().iter().map(|id| *id as i64).collect();
+    let system_prompt = "You are a helpful assistant. Answer concisely and stop when done. /no_think";
+    let system_ids = encode_text(tokenizer, system_prompt)?;
+    let user_ids = encode_text(tokenizer, prompt)?;
+    let role_system = encode_text(tokenizer, "system")?;
+    let role_user = encode_text(tokenizer, "user")?;
+    let role_assistant = encode_text(tokenizer, "assistant")?;
+    let newline_ids = encode_text(tokenizer, "\n")?;
+
+    let mut all_ids: Vec<i64> = Vec::with_capacity(
+        1 + role_system.len() + newline_ids.len() + system_ids.len() + 1 + newline_ids.len()
+            + 1 + role_user.len() + newline_ids.len() + user_ids.len() + 1 + newline_ids.len()
+            + 1 + role_assistant.len() + newline_ids.len(),
+    );
+    // System: <|im_start|>system\n{content}<|im_end|>\n
+    all_ids.push(IM_START);
+    all_ids.extend(&role_system);
+    all_ids.extend(&newline_ids);
+    all_ids.extend(&system_ids);
+    all_ids.push(IM_END);
+    all_ids.extend(&newline_ids);
+    // User: <|im_start|>user\n{content}<|im_end|>\n
+    all_ids.push(IM_START);
+    all_ids.extend(&role_user);
+    all_ids.extend(&newline_ids);
+    all_ids.extend(&user_ids);
+    all_ids.push(IM_END);
+    all_ids.extend(&newline_ids);
+    // Assistant generation prompt: <|im_start|>assistant\n
+    all_ids.push(IM_START);
+    all_ids.extend(&role_assistant);
+    all_ids.extend(&newline_ids);
     if all_ids.is_empty() {
         return Ok(vec![]);
     }
 
     let mut kv_cache = KvCache::new();
     let mut output_tokens = Vec::new();
-    let mut generated_tokens: std::collections::HashSet<i64> = std::collections::HashSet::new();
     let max_steps = max_tokens as usize;
     const REPETITION_PENALTY: f32 = 1.15;
-    const TOP_K: usize = 40;
 
     for step in 0..max_steps {
         let (input_ids, past_seq_len) = if step == 0 {
@@ -163,21 +199,20 @@ fn run_generate(prompt: &str, max_tokens: u32, sink: Option<&StreamSink<String>>
             }
         }
         logits_vec.sort_unstable_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-        for candidate in logits_vec.iter().take(TOP_K) {
-            if !generated_tokens.contains(&(candidate.0 as i64)) {
-                let token_id = candidate.0;
-                generated_tokens.insert(token_id as i64);
-                all_ids.push(token_id as i64);
-                let piece = tokenizer
-                    .decode(std::slice::from_ref(&(token_id as u32)), true)
-                    .map_err(|e| Error::new(format!("Tokenizer error: {e}")))?;
-                if let Some(s) = sink {
-                    let _ = s.add(piece.clone());
-                }
-                output_tokens.push(piece);
+        let token_id = logits_vec[0].0;
+        if token_id as i64 == IM_END || token_id as i64 == EOS_ID {
+            break;
+        }
+        all_ids.push(token_id as i64);
+        let piece = tokenizer
+            .decode(std::slice::from_ref(&(token_id as u32)), true)
+            .map_err(|e| Error::new(format!("Tokenizer error: {e}")))?;
+        if let Some(s) = sink {
+            if s.add(piece.clone()).is_err() {
                 break;
             }
         }
+        output_tokens.push(piece);
     }
 
     Ok(output_tokens)
