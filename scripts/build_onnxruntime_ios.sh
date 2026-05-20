@@ -3,8 +3,7 @@ set -euo pipefail
 
 # Builds ONNX Runtime from source for iOS (arm64).
 # The pre-built iOS binary from pyke's CDN crashes during Environment::Initialize
-# on device (known ONNX Runtime iOS bug). Building from source with minimal config
-# and --disable_ml_ops avoids the crash.
+# on device (known ONNX Runtime iOS bug). Building from source avoids the crash.
 #
 # Prerequisites: Xcode, cmake, python3
 #   xcode-select --install
@@ -40,8 +39,6 @@ cd onnxruntime
   --osx_arch arm64 \
   --apple_deploy_target 15.0 \
   --use_xnnpack \
-  --minimal_build extended \
-  --disable_ml_ops \
   --skip_tests \
   --cmake_extra_defines CMAKE_POLICY_VERSION_MINIMUM=3.5
 
