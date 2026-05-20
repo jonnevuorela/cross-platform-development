@@ -30,7 +30,8 @@ class RustChatRepository implements ChatRepository {
     final manifest = await AssetManifest.loadFromAssetBundle(rootBundle);
     final assets = manifest
         .listAssets()
-        .where((asset) => asset.startsWith(_modelsAssetPrefix));
+        .where((asset) => asset.startsWith(_modelsAssetPrefix))
+        .where(_isModelAsset);
     for (final asset in assets) {
       final fileName = asset.substring(_modelsAssetPrefix.length);
       if (fileName.isEmpty) {
@@ -43,6 +44,13 @@ class RustChatRepository implements ChatRepository {
       final data = await rootBundle.load(asset);
       await file.writeAsBytes(data.buffer.asUint8List(), flush: true);
     }
+  }
+
+  bool _isModelAsset(String assetPath) {
+    if (assetPath.endsWith('$_modelsAssetPrefix$_tokenizerFileName')) {
+      return true;
+    }
+    return assetPath.endsWith('.onnx') || assetPath.endsWith('.onnx_data');
   }
 
   String _labelFromFileName(String name) {
