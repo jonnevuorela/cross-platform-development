@@ -43,7 +43,6 @@ cd onnxruntime
   --use_coreml \
   --minimal_build extended \
   --disable_ml_ops \
-  --disable_exceptions \
   --skip_tests \
   --cmake_extra_defines CMAKE_POLICY_VERSION_MINIMUM=3.5
 
