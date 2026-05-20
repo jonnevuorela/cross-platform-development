@@ -51,6 +51,7 @@ class RustChatRepository implements ChatRepository {
       }
       await _copyAssetToFile(asset, file);
     }
+    await _ensureExternalDataFiles(dir);
   }
 
   bool _isModelAsset(String assetPath) {
@@ -61,24 +62,41 @@ class RustChatRepository implements ChatRepository {
   }
 
   Future<void> _copyAssetToFile(String assetPath, File destination) async {
-    if (Platform.isIOS && assetPath.endsWith('.onnx_data')) {
-      final bundlePath = _iosBundleAssetPath(assetPath);
-      final bundleFile = File(bundlePath);
-      if (await bundleFile.exists()) {
-        final sink = destination.openWrite();
-        await bundleFile.openRead().pipe(sink);
-        await sink.flush();
-        await sink.close();
-        return;
-      }
-    }
     final data = await rootBundle.load(assetPath);
     await destination.writeAsBytes(data.buffer.asUint8List(), flush: true);
   }
 
-  String _iosBundleAssetPath(String assetPath) {
+  Future<void> _ensureExternalDataFiles(Directory modelsDir) async {
+    if (!Platform.isIOS) {
+      return;
+    }
+    final onnxFiles = await modelsDir
+        .list()
+        .where((entity) => entity is File)
+        .cast<File>()
+        .where((file) => file.path.endsWith('.onnx'))
+        .toList();
+    for (final modelFile in onnxFiles) {
+      final dataPath = modelFile.path.replaceAll('.onnx', '.onnx_data');
+      final dataFile = File(dataPath);
+      if (await dataFile.exists()) {
+        continue;
+      }
+      final fileName = dataFile.uri.pathSegments.last;
+      final bundleFile = File(_iosBundleResourcePath(fileName));
+      if (!await bundleFile.exists()) {
+        continue;
+      }
+      final sink = dataFile.openWrite();
+      await bundleFile.openRead().pipe(sink);
+      await sink.flush();
+      await sink.close();
+    }
+  }
+
+  String _iosBundleResourcePath(String fileName) {
     final bundlePath = Directory(Platform.resolvedExecutable).parent.path;
-    return '$bundlePath/Frameworks/App.framework/flutter_assets/$assetPath';
+    return '$bundlePath/$fileName';
   }
 
   String _labelFromFileName(String name) {
