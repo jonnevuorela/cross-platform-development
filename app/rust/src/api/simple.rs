@@ -2,6 +2,8 @@ use crate::frb_generated::StreamSink;
 use half::f16;
 use once_cell::sync::OnceCell;
 use ort::{
+    environment::GlobalThreadPoolOptions,
+    ep::{coreml::ComputeUnits, CoreML},
     session::{builder::GraphOptimizationLevel, Session},
     value::{Tensor, TensorElementType, ValueType},
     Error,
@@ -52,9 +54,23 @@ pub fn init_model(model_path: String, tokenizer_path: String) -> Result<(), Erro
         let tokenizer = Tokenizer::from_file(tokenizer_path)
             .map_err(|e| Error::new(format!("Tokenizer error: {e}")))?;
 
+        ort::init()
+            .with_name("smollm")
+            .with_global_thread_pool(
+                GlobalThreadPoolOptions::default()
+                    .with_intra_threads(1)?
+                    .with_spin_control(false)?
+            )
+            .commit();
+
         let session = Session::builder()?
             .with_optimization_level(GraphOptimizationLevel::Level3)?
             .with_intra_threads(4)?
+            .with_execution_providers([
+                CoreML::default()
+                    .with_compute_units(ComputeUnits::CPUAndNeuralEngine)
+                    .build()
+            ])?
             .commit_from_file(model_path)?;
 
         log_model_io(&session);
