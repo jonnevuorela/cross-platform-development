@@ -43,27 +43,32 @@ cd onnxruntime
   --parallel \
   --skip_tests \
   --compile_no_warning_as_error \
-  --build_apple_framework \
   --cmake_extra_defines CMAKE_POLICY_VERSION_MINIMUM=3.5 \
   --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
 
 BUILD_OUTPUT="build/iOS/RelWithDebInfo"
 
-# Copy the built static library
-# --build_apple_framework produces a self-contained static framework binary
-# (not a thin archive with dangling .o references like the plain .a)
-LIB=$(find "$BUILD_OUTPUT" -maxdepth 5 \( -name "libonnxruntime*.a" -o -path "*/onnxruntime.framework/onnxruntime" \) | head -1)
-if [ -n "$LIB" ]; then
-  cp "$LIB" "$OUT_DIR/libonnxruntime.a"
-  echo "Copied from: $LIB"
-else
-  echo "Error: static library not found in $BUILD_OUTPUT"
-  find "$BUILD_OUTPUT" \( -name "*.a" -o -name "onnxruntime" -type f \)
+# Find all static libraries produced by the build
+ARCHIVES=()
+while IFS= read -r f; do
+  ARCHIVES+=("$f")
+done < <(find "$BUILD_OUTPUT" -name "*.a")
+
+if [ ${#ARCHIVES[@]} -eq 0 ]; then
+  echo "Error: no .a files found in $BUILD_OUTPUT"
+  find "$BUILD_OUTPUT" -type f
   exit 1
 fi
 
+echo "Merging ${#ARCHIVES[@]} static libraries into one..."
+printf "  %s\n" "${ARCHIVES[@]}"
+echo "---"
+
+libtool -static -o "$OUT_DIR/libonnxruntime.a" "${ARCHIVES[@]}"
+
 echo ""
-echo "Done. Built library at:"
+echo "Done. Merged library at:"
+file "$OUT_DIR/libonnxruntime.a"
 ls -lh "$OUT_DIR/libonnxruntime.a"
 echo ""
 echo "Now rebuild the Flutter app. The iOS Rust build will link this custom library."
