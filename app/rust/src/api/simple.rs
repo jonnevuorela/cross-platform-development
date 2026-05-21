@@ -8,9 +8,9 @@ use ort::{
 };
 use tokenizers::Tokenizer;
 
-const NUM_LAYERS: usize = 36;
-const NUM_KV_HEADS: i64 = 4;
-const HEAD_DIM: i64 = 128;
+const NUM_LAYERS: usize = 30;
+const NUM_KV_HEADS: i64 = 3;
+const HEAD_DIM: i64 = 64;
 
 struct KvCache {
     keys: Vec<Vec<f32>>,
@@ -118,9 +118,9 @@ pub fn generate_stream(
     }
 }
 
-const IM_START: i64 = 128011;
-const IM_END: i64 = 128012;
-const EOS_ID: i64 = 128001;
+const IM_START: i64 = 1;
+const IM_END: i64 = 2;
+const EOS_ID: i64 = 0;
 
 fn encode_text(tokenizer: &Tokenizer, text: &str) -> Result<Vec<i64>, Error> {
     let enc = tokenizer
@@ -256,7 +256,7 @@ fn run_generate(prompt: &str, max_tokens: u32, sink: Option<&StreamSink<String>>
 
         let seq_len_for_logits = new_seq_len;
 
-        let vocab_size = 128256;
+        let vocab_size = 49152;
         let total_logits = seq_len_for_logits * vocab_size;
         if logits.len() < total_logits {
             break;
@@ -267,7 +267,7 @@ fn run_generate(prompt: &str, max_tokens: u32, sink: Option<&StreamSink<String>>
         let mut logits_vec: Vec<(usize, f32)> = slice.iter().copied().enumerate().collect();
         let local_ids = &all_ids[all_ids.len().saturating_sub(50)..];
         for (idx, val) in logits_vec.iter_mut() {
-            if *idx >= 128000 {
+            if *idx >= 49152 {
                 continue;
             }
             if local_ids.contains(&(*idx as i64)) {

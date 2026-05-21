@@ -136,7 +136,23 @@ class _ChatPageState extends State<ChatPage> {
           return Scaffold(
             drawer: _ChatDrawer(state: state),
             appBar: AppBar(
-              title: const Text('Chat Studio'),
+              title: state.selectedModel != null
+                  ? Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Image.asset(
+                          state.selectedModel!.isSmart
+                              ? 'assets/media/images/big-brain-wojak.png'
+                              : 'assets/media/images/no-brain-dumb.png',
+                          width: 20,
+                          height: 20,
+                          fit: BoxFit.contain,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(state.selectedModel!.label),
+                      ],
+                    )
+                  : const Text('Chat Studio'),
               backgroundColor: Theme.of(context).colorScheme.background,
               foregroundColor: Theme.of(context).colorScheme.onBackground,
               actions: [
@@ -212,23 +228,6 @@ class _ChatPageState extends State<ChatPage> {
                             color: Theme.of(context).colorScheme.background,
                           ),
                         ),
-                      ),
-                      Positioned(
-                        top: 16, right: 16,
-                        child: state.selectedModel == null
-                            ? const SizedBox.shrink()
-                            : _ModelBadge(model: state.selectedModel!),
-                      ),
-                      Positioned(
-                        top: 64, right: 16,
-                        child: state.selectedModel == null
-                            ? const SizedBox.shrink()
-                            : Image.asset(
-                                'assets/media/images/big-brain-wojak.png',
-                                width: 64,
-                                height: 64,
-                                fit: BoxFit.contain,
-                              ),
                       ),
                       ListView.builder(
                         controller: _scrollController,
@@ -372,26 +371,6 @@ class _ChatComposer extends StatelessWidget {
   }
 }
 
-class _ModelBadge extends StatelessWidget {
-  const _ModelBadge({required this.model});
-  final ModelInfo model;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface.withOpacity(0.95),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: Theme.of(context).colorScheme.outline.withOpacity(0.7),
-        ),
-      ),
-      child: Text(model.label, style: Theme.of(context).textTheme.labelMedium),
-    );
-  }
-}
-
 class _ModelToggle extends StatelessWidget {
   const _ModelToggle({required this.state});
   final ChatState state;
@@ -413,15 +392,52 @@ class _ModelToggle extends StatelessWidget {
           Toasts.show('Model load failed: $error', context: context);
         }
       },
-      itemBuilder: (context) => available
-          .map(
-            (model) => CheckedPopupMenuItem(
-              value: model,
-              checked: model.id == state.selectedModel?.id,
-              child: Text(model.label),
+      itemBuilder: (context) {
+        final entries = <PopupMenuEntry<ModelInfo>>[];
+        final groups = <String, List<ModelInfo>>{};
+        for (final model in available) {
+          groups.putIfAbsent(model.groupLabel, () => []).add(model);
+        }
+        final sortedLabels = groups.keys.toList()..sort();
+        for (final groupLabel in sortedLabels) {
+          final variants = groups[groupLabel]!;
+          entries.add(
+            PopupMenuItem<ModelInfo>(
+              enabled: false,
+              child: Text(
+                groupLabel,
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+              ),
             ),
-          )
-          .toList(),
+          );
+          for (final model in variants) {
+            entries.add(
+              CheckedPopupMenuItem(
+                value: model,
+                checked: model.id == state.selectedModel?.id,
+                child: Row(
+                  children: [
+                    Image.asset(
+                      model.isSmart
+                          ? 'assets/media/images/big-brain-wojak.png'
+                          : 'assets/media/images/no-brain-dumb.png',
+                      width: 16,
+                      height: 16,
+                      fit: BoxFit.contain,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(model.label),
+                  ],
+                ),
+              ),
+            );
+          }
+        }
+        return entries;
+      },
     );
   }
 }

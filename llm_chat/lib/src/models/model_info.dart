@@ -2,6 +2,8 @@ class ModelInfo {
   const ModelInfo({
     required this.id,
     required this.label,
+    required this.groupLabel,
+    required this.isSmart,
     required this.path,
     required this.tokenizerPath,
     required this.index,
@@ -9,6 +11,8 @@ class ModelInfo {
 
   final String id;
   final String label;
+  final String groupLabel;
+  final bool isSmart;
   final String path;
   final String tokenizerPath;
   final int index;

@@ -12,7 +12,7 @@ class RustChatRepository implements ChatRepository {
 
   static const _modelsDirName = 'models';
   static const _modelsAssetPrefix = 'assets/models/onnx/';
-  static const _cacheVersion = 3;
+  static const _cacheVersion = 4;
 
   RustChatRepository();
 
@@ -72,7 +72,7 @@ class RustChatRepository implements ChatRepository {
     final copied = await dir.list().toList();
     print('[LLM] files in models dir after copy: ${copied.length}');
     for (final e in copied) {
-      print('  ${e is Directory ? "[DIR]" : "[FILE]"} ${e.uri.pathSegments.last}');
+      print('  ${e is Directory ? "[DIR]" : "[FILE]"} ${e.path.split('/').last}');
     }
 
     await versionFile.writeAsString('$_cacheVersion', flush: true);
@@ -147,7 +147,7 @@ class RustChatRepository implements ChatRepository {
     final entries = await dir.list().toList();
     print('[LLM] availableModels: ${entries.length} entries in ${dir.path}');
     for (final e in entries) {
-      print('  ${e is Directory ? "[DIR]" : "[FILE]"} ${e.uri.pathSegments.last}');
+      print('  ${e is Directory ? "[DIR]" : "[FILE]"} ${e.path.split('/').last}');
     }
 
     final modelDirs = entries
@@ -159,7 +159,7 @@ class RustChatRepository implements ChatRepository {
     final models = <ModelInfo>[];
     var index = 0;
     for (final modelDir in modelDirs) {
-      final dirName = modelDir.uri.pathSegments.last;
+      final dirName = modelDir.path.split('/').last;
       final modelLabel = _labelFromDirName(dirName);
       print('[LLM] scanning dir "$dirName" (label="$modelLabel")');
 
@@ -171,15 +171,23 @@ class RustChatRepository implements ChatRepository {
         ..sort((a, b) => a.path.compareTo(b.path));
       print('[LLM]   ${onnxFiles.length} .onnx files found');
 
+      final tokenizerFile = '${modelDir.path}/tokenizer.json';
+      final tokenizerExists = await File(tokenizerFile).exists();
+      print('[LLM]   tokenizer: $tokenizerFile exists=$tokenizerExists');
+
+      final half = (onnxFiles.length + 1) ~/ 2;
       for (final f in onnxFiles) {
-        final variant = _variantLabel(f.uri.pathSegments.last);
+        final variant = _variantLabel(f.path.split('/').last);
+        final isSmart = index < half;
         index += 1;
-        print('[LLM]   → variant="$variant" path=${f.path}');
+        print('[LLM]   → variant="$variant" smart=$isSmart path=${f.path}');
         models.add(ModelInfo(
-          id: '$dirName/${f.uri.pathSegments.last}',
+          id: '$dirName/${f.path.split('/').last}',
           label: '$modelLabel ($variant)',
+          groupLabel: modelLabel,
+          isSmart: isSmart,
           path: f.path,
-          tokenizerPath: '${modelDir.path}/tokenizer.json',
+          tokenizerPath: tokenizerFile,
           index: index,
         ));
       }
