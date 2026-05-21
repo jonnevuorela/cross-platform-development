@@ -12,7 +12,7 @@ class RustChatRepository implements ChatRepository {
 
   static const _modelsDirName = 'models';
   static const _modelsAssetPrefix = 'assets/models/onnx/';
-  static const _tokenizerFileName = 'tokenizer.json';
+  static const _cacheVersion = 1;
 
   RustChatRepository();
 
@@ -22,43 +22,45 @@ class RustChatRepository implements ChatRepository {
     if (!await modelsDir.exists()) {
       await modelsDir.create(recursive: true);
     }
-    await _removeLegacyBundledDir(modelsDir);
     return modelsDir;
   }
 
-  Future<void> _removeLegacyBundledDir(Directory modelsDir) async {
-    final legacyDir = Directory('${modelsDir.path}/bundled');
-    if (await legacyDir.exists()) {
-      await legacyDir.delete(recursive: true);
-    }
-  }
-
-  Future<void> _ensureBundledAssets() async {
+  Future<void> _ensureBundledModels() async {
     final dir = await _modelsDir();
-    final manifest = await AssetManifest.loadFromAssetBundle(rootBundle);
-    final assets = manifest
-        .listAssets()
-        .where((asset) => asset.startsWith(_modelsAssetPrefix))
-        .where(_isModelAsset);
-    for (final asset in assets) {
-      final fileName = asset.substring(_modelsAssetPrefix.length);
-      if (fileName.isEmpty) {
-        continue;
-      }
-      final file = File('${dir.path}/$fileName');
-      if (await file.exists()) {
-        continue;
-      }
-      await _copyAssetToFile(asset, file);
+
+    final versionFile = File('${dir.path}/.cache_version');
+    final cachedVersion = await _readCacheVersion(versionFile);
+    if (cachedVersion == _cacheVersion) {
+      return;
     }
-    await _ensureExternalDataFiles(dir);
+
+    await dir.delete(recursive: true);
+    await dir.create(recursive: true);
+
+    final manifest = await AssetManifest.loadFromAssetBundle(rootBundle);
+    final modelAssets = manifest
+        .listAssets()
+        .where((asset) => asset.startsWith(_modelsAssetPrefix));
+
+    for (final asset in modelAssets) {
+      final relativePath = asset.substring(_modelsAssetPrefix.length);
+      if (relativePath.isEmpty) continue;
+
+      final destFile = File('${dir.path}/$relativePath');
+      await destFile.parent.create(recursive: true);
+      await _copyAssetToFile(asset, destFile);
+    }
+
+    await versionFile.writeAsString('$_cacheVersion', flush: true);
   }
 
-  bool _isModelAsset(String assetPath) {
-    if (assetPath.endsWith('$_modelsAssetPrefix$_tokenizerFileName')) {
-      return true;
+  Future<int> _readCacheVersion(File file) async {
+    try {
+      final content = await file.readAsString();
+      return int.parse(content.trim());
+    } catch (_) {
+      return -1;
     }
-    return assetPath.endsWith('.onnx') || assetPath.endsWith('.onnx_data');
   }
 
   Future<void> _copyAssetToFile(String assetPath, File destination) async {
@@ -66,93 +68,44 @@ class RustChatRepository implements ChatRepository {
     await destination.writeAsBytes(data.buffer.asUint8List(), flush: true);
   }
 
-  Future<void> _ensureExternalDataFiles(Directory modelsDir) async {
-    final onnxFiles = await modelsDir
-        .list()
-        .where((entity) => entity is File)
-        .cast<File>()
-        .where((file) => file.path.endsWith('.onnx'))
+  String _labelFromDirName(String name) {
+    final words = name
+        .replaceAll('-', ' ')
+        .replaceAll('_', ' ')
+        .split(' ')
+        .where((w) => w.isNotEmpty)
         .toList();
-    for (final modelFile in onnxFiles) {
-      final dataPath = modelFile.path.replaceAll('.onnx', '.onnx_data');
-      final dataFile = File(dataPath);
-      if (await dataFile.exists()) {
-        continue;
-      }
-      final fileName = dataFile.uri.pathSegments.last;
-      final sourceFile = await _findOnnxDataSource(fileName);
-      if (sourceFile == null) {
-        continue;
-      }
-      final sink = dataFile.openWrite();
-      await sourceFile.openRead().pipe(sink);
-      await sink.flush();
-      await sink.close();
-    }
+    if (words.isEmpty) return name;
+    return words
+        .map((w) => '${w[0].toUpperCase()}${w.substring(1)}')
+        .join(' ');
   }
 
-  Future<File?> _findOnnxDataSource(String fileName) async {
-    if (Platform.isIOS) {
-      final bundlePath = Directory(Platform.resolvedExecutable).parent.path;
-      final bundleFile = File('$bundlePath/$fileName');
-      if (await bundleFile.exists()) {
-        return bundleFile;
-      }
-      final docsDir = await getApplicationDocumentsDirectory();
-      final docsFile = File('${docsDir.path}/$fileName');
-      if (await docsFile.exists()) {
-        return docsFile;
-      }
-    }
-    final cwd = Directory.current.path;
-    final relativeFile = File('$cwd/assets/models/onnx/$fileName');
-    if (await relativeFile.exists()) {
-      return relativeFile;
-    }
-    final exeDir = Directory(Platform.resolvedExecutable).parent.path;
-    final exeRelative = File('$exeDir/assets/models/onnx/$fileName');
-    if (await exeRelative.exists()) {
-      return exeRelative;
-    }
-    return null;
-  }
-
-  String _labelFromFileName(String name) {
-    var base = name.replaceAll('.onnx', '');
+  String _variantLabel(String filename) {
+    var base = filename.replaceAll('.onnx', '');
     if (base.startsWith('model_')) {
       base = base.substring('model_'.length);
     }
-    final words = base.split('_').where((part) => part.isNotEmpty).toList();
-    if (words.isEmpty) {
-      return name;
-    }
-    final label = words
-        .map((word) => word.isEmpty
-            ? word
-            : '${word[0].toUpperCase()}${word.substring(1)}')
-        .join(' ');
-    return label;
+    if (base.isEmpty) return 'FP32';
+    return base.toUpperCase();
   }
 
   @override
   Future<void> loadModel({required ModelInfo model}) async {
     _isModelReady = false;
     _initError = null;
-    await _ensureBundledAssets();
-    final modelPath = model.path;
-    final tokenizerPath = await _ensureTokenizerPath();
-    await rust_api.initModel(modelPath: modelPath, tokenizerPath: tokenizerPath);
+    await _ensureBundledModels();
+    await rust_api.initModel(
+      modelPath: model.path,
+      tokenizerPath: model.tokenizerPath,
+    );
     _isModelReady = true;
   }
 
   @override
   Future<void> ensureReady({required ModelInfo model}) async {
-    if (_isModelReady) {
-      return;
-    }
-    if (_initError != null) {
-      throw _initError!;
-    }
+    if (_isModelReady) return;
+    if (_initError != null) throw _initError!;
     try {
       await loadModel(model: model);
     } catch (error) {
@@ -161,37 +114,41 @@ class RustChatRepository implements ChatRepository {
     }
   }
 
-  Future<String> _ensureTokenizerPath() async {
-    final dir = await _modelsDir();
-    final file = File('${dir.path}/$_tokenizerFileName');
-    if (!await file.exists()) {
-      throw Exception('Tokenizer not found at ${file.path}');
-    }
-    return file.path;
-  }
-
   @override
   Future<List<ModelInfo>> availableModels() async {
-    await _ensureBundledAssets();
+    await _ensureBundledModels();
     final dir = await _modelsDir();
-    final files = await dir
-        .list()
-        .where((entity) => entity is File)
-        .cast<File>()
-        .where((file) => file.path.endsWith('.onnx'))
-        .toList();
-    files.sort((a, b) => a.path.compareTo(b.path));
+
+    final entries = await dir.list().toList();
+    final modelDirs = entries
+        .whereType<Directory>()
+        .toList()
+      ..sort((a, b) => a.path.compareTo(b.path));
+
     final models = <ModelInfo>[];
-    for (var i = 0; i < files.length; i += 1) {
-      final file = files[i];
-      final name = file.uri.pathSegments.last;
-      final label = _labelFromFileName(name);
-      models.add(ModelInfo(
-        id: '${i + 1}',
-        label: label,
-        path: file.path,
-        index: i + 1,
-      ));
+    var index = 0;
+    for (final modelDir in modelDirs) {
+      final dirName = modelDir.uri.pathSegments.last;
+      final modelLabel = _labelFromDirName(dirName);
+
+      final files = await modelDir.list().toList();
+      final onnxFiles = files
+          .whereType<File>()
+          .where((f) => f.path.endsWith('.onnx'))
+          .toList()
+        ..sort((a, b) => a.path.compareTo(b.path));
+
+      for (final f in onnxFiles) {
+        final variant = _variantLabel(f.uri.pathSegments.last);
+        index += 1;
+        models.add(ModelInfo(
+          id: '$dirName/${f.uri.pathSegments.last}',
+          label: '$modelLabel ($variant)',
+          path: f.path,
+          tokenizerPath: '${modelDir.path}/tokenizer.json',
+          index: index,
+        ));
+      }
     }
     return models;
   }

@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:llm_chat/llm_chat.dart';
@@ -7,13 +5,6 @@ import 'package:system_info2/system_info2.dart';
 
 import 'chat_storage.dart';
 import '../ui/toast.dart';
-
-class _ModelCandidate {
-  _ModelCandidate({required this.model});
-
-  final ModelInfo model;
-  int? sizeBytes;
-}
 
 class ChatPage extends StatefulWidget {
   const ChatPage({super.key});
@@ -116,8 +107,16 @@ class _ChatPageState extends State<ChatPage> {
                       isAutoSelected: _storageData!.isAutoSelected,
                     ));
               }
-              if (_storageData!.isAutoSelected) {
-                _probeAndSelectModel(context, state);
+              if (_storageData!.isAutoSelected && state.selectedModel == null) {
+                final available = state.availableModels;
+                if (available.isNotEmpty) {
+                  context.read<ChatBloc>().add(ChatModelVariantLoaded(
+                        model: available.first,
+                        isAutoSelected: true,
+                      ));
+                  Toasts.show('Auto-selected ${available.first.label}',
+                      context: context);
+                }
               }
             });
           }
@@ -315,79 +314,7 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 
-  Future<void> _probeAndSelectModel(
-    BuildContext context, ChatState state) async {
-    return; // diagnostic: skip probe
-    final repository = context.read<ChatRepository>();
-    final available = await repository.availableModels();
-    if (available.isEmpty) {
-      return;
-    }
-    final candidates = List<ModelInfo>.from(available);
-    final sizedCandidates = <_ModelCandidate>[];
-    for (final model in candidates) {
-      sizedCandidates.add(_ModelCandidate(model: model));
-    }
-    for (final candidate in sizedCandidates) {
-      try {
-        final modelFile = File(candidate.model.path);
-        final modelSize = await modelFile.length();
-        final dataPath = candidate.model.path.replaceAll('.onnx', '.onnx_data');
-        final dataFile = File(dataPath);
-        final dataSize = await dataFile.length();
-        candidate.sizeBytes = modelSize + dataSize;
-      } catch (_) {
-        candidate.sizeBytes = null;
-      }
-    }
-    for (final candidate in sizedCandidates) {
-      final sizeBytes = candidate.sizeBytes;
-      if (sizeBytes == null) {
-        continue;
-      }
-      final sizeMb = (sizeBytes / (1024 * 1024)).toStringAsFixed(1);
-      print('[LLM] probe candidate: ${candidate.model.label} (${sizeMb} MB)');
-    }
-    sizedCandidates.sort((a, b) {
-      final aSize = a.sizeBytes ?? -1;
-      final bSize = b.sizeBytes ?? -1;
-      if (aSize != bSize) {
-        return aSize.compareTo(bSize);
-      }
-      return a.model.label.compareTo(b.model.label);
-    });
-    Object? lastError;
-    for (final candidate in sizedCandidates) {
-      final stopwatch = Stopwatch()..start();
-      try {
-        await repository.loadModel(model: candidate.model);
-        final stream = repository.generate(
-          prompt: 'ping',
-          model: candidate.model,
-          maxTokens: 8,
-        );
-        await stream.first.timeout(const Duration(milliseconds: 5000));
-        stopwatch.stop();
-        if (!context.mounted) return;
-        if (stopwatch.elapsedMilliseconds < 6000) {
-          context.read<ChatBloc>().add(ChatModelVariantLoaded(
-                model: candidate.model,
-                isAutoSelected: true,
-              ));
-          Toasts.show('Auto-selected ${candidate.model.label}',
-              context: context);
-          return;
-        }
-      } catch (error) {
-        lastError = error;
-      }
-    }
-    if (!context.mounted) return;
-    final message = lastError == null
-        ? 'No models responded during probe.'
-        : 'Model probe failed. Check logs.';
-    Toasts.show(message, context: context);
-  }
+
 
 }
 
