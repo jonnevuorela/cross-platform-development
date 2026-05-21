@@ -2,7 +2,6 @@ use crate::frb_generated::StreamSink;
 use half::f16;
 use once_cell::sync::OnceCell;
 use ort::{
-    ep::{coreml::ComputeUnits, CoreML},
     session::{builder::GraphOptimizationLevel, Session},
     value::{Tensor, TensorElementType, ValueType},
     Error,
@@ -61,11 +60,6 @@ pub fn init_model(model_path: String, tokenizer_path: String) -> Result<(), Erro
             .with_optimization_level(GraphOptimizationLevel::Level3)?
             .with_intra_threads(1)?
             .with_inter_threads(1)?
-            .with_execution_providers([
-                CoreML::default()
-                    .with_compute_units(ComputeUnits::CPUAndNeuralEngine)
-                    .build()
-            ])?
             .commit_from_file(model_path)?;
 
         log_model_io(&session);
