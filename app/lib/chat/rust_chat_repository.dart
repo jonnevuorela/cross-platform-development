@@ -12,7 +12,7 @@ class RustChatRepository implements ChatRepository {
 
   static const _modelsDirName = 'models';
   static const _modelsAssetPrefix = 'assets/models/onnx/';
-  static const _cacheVersion = 1;
+  static const _cacheVersion = 3;
 
   RustChatRepository();
 
@@ -30,6 +30,7 @@ class RustChatRepository implements ChatRepository {
 
     final versionFile = File('${dir.path}/.cache_version');
     final cachedVersion = await _readCacheVersion(versionFile);
+    print('[LLM] cache version: cached=$cachedVersion, expected=$_cacheVersion');
     if (cachedVersion == _cacheVersion) {
       return;
     }
@@ -37,10 +38,26 @@ class RustChatRepository implements ChatRepository {
     await dir.delete(recursive: true);
     await dir.create(recursive: true);
 
+    print('[LLM] loading asset manifest...');
     final manifest = await AssetManifest.loadFromAssetBundle(rootBundle);
-    final modelAssets = manifest
-        .listAssets()
-        .where((asset) => asset.startsWith(_modelsAssetPrefix));
+    final allAssets = manifest.listAssets();
+    print('[LLM] total assets in manifest: ${allAssets.length}');
+
+    final modelAssets = allAssets
+        .where((asset) => asset.startsWith(_modelsAssetPrefix))
+        .toList();
+    print('[LLM] model assets found: ${modelAssets.length}');
+    if (modelAssets.isNotEmpty) {
+      print('[LLM] first 5 model assets:');
+      for (final a in modelAssets.take(5)) {
+        print('  $a');
+      }
+    } else if (allAssets.isNotEmpty) {
+      print('[LLM] no model assets found. sample other assets:');
+      for (final a in allAssets.take(5)) {
+        print('  $a');
+      }
+    }
 
     for (final asset in modelAssets) {
       final relativePath = asset.substring(_modelsAssetPrefix.length);
@@ -51,7 +68,15 @@ class RustChatRepository implements ChatRepository {
       await _copyAssetToFile(asset, destFile);
     }
 
+    // verify
+    final copied = await dir.list().toList();
+    print('[LLM] files in models dir after copy: ${copied.length}');
+    for (final e in copied) {
+      print('  ${e is Directory ? "[DIR]" : "[FILE]"} ${e.uri.pathSegments.last}');
+    }
+
     await versionFile.writeAsString('$_cacheVersion', flush: true);
+    print('[LLM] cache version written to $_cacheVersion');
   }
 
   Future<int> _readCacheVersion(File file) async {
@@ -120,16 +145,23 @@ class RustChatRepository implements ChatRepository {
     final dir = await _modelsDir();
 
     final entries = await dir.list().toList();
+    print('[LLM] availableModels: ${entries.length} entries in ${dir.path}');
+    for (final e in entries) {
+      print('  ${e is Directory ? "[DIR]" : "[FILE]"} ${e.uri.pathSegments.last}');
+    }
+
     final modelDirs = entries
         .whereType<Directory>()
         .toList()
       ..sort((a, b) => a.path.compareTo(b.path));
+    print('[LLM] availableModels: ${modelDirs.length} model directories found');
 
     final models = <ModelInfo>[];
     var index = 0;
     for (final modelDir in modelDirs) {
       final dirName = modelDir.uri.pathSegments.last;
       final modelLabel = _labelFromDirName(dirName);
+      print('[LLM] scanning dir "$dirName" (label="$modelLabel")');
 
       final files = await modelDir.list().toList();
       final onnxFiles = files
@@ -137,10 +169,12 @@ class RustChatRepository implements ChatRepository {
           .where((f) => f.path.endsWith('.onnx'))
           .toList()
         ..sort((a, b) => a.path.compareTo(b.path));
+      print('[LLM]   ${onnxFiles.length} .onnx files found');
 
       for (final f in onnxFiles) {
         final variant = _variantLabel(f.uri.pathSegments.last);
         index += 1;
+        print('[LLM]   → variant="$variant" path=${f.path}');
         models.add(ModelInfo(
           id: '$dirName/${f.uri.pathSegments.last}',
           label: '$modelLabel ($variant)',
@@ -150,6 +184,7 @@ class RustChatRepository implements ChatRepository {
         ));
       }
     }
+    print('[LLM] availableModels returning ${models.length} models');
     return models;
   }
 
