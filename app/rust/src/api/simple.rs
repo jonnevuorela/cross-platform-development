@@ -52,14 +52,32 @@ pub fn init_model(model_path: String, tokenizer_path: String) -> Result<(), Erro
         let tokenizer = Tokenizer::from_file(tokenizer_path)
             .map_err(|e| Error::new(format!("Tokenizer error: {e}")))?;
 
+        let path = std::path::Path::new(&model_path);
+        let meta = std::fs::metadata(path)
+            .map(|m| m.len())
+            .unwrap_or(0);
+        let data_path = path.with_extension("onnx_data");
+        let data_meta = std::fs::metadata(&data_path)
+            .map(|m| m.len())
+            .unwrap_or(0);
+        eprintln!(
+            "[LLM] loading model: {} ({:.2} MB), data: {} ({:.2} MB)",
+            model_path,
+            meta as f64 / 1_048_576.0,
+            data_path.display(),
+            data_meta as f64 / 1_048_576.0,
+        );
+
         ort::init()
             .with_name("smollm")
             .commit();
 
         let session = Session::builder()?
-            .with_optimization_level(GraphOptimizationLevel::Level3)?
+            .with_optimization_level(GraphOptimizationLevel::Level1)?
             .with_intra_threads(1)?
             .with_inter_threads(1)?
+            .with_memory_pattern(false)?
+            .with_prepacking(false)?
             .commit_from_file(model_path)?;
 
         log_model_io(&session);
