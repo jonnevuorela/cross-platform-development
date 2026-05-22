@@ -138,3 +138,30 @@ class ChatModelSwitchRequested extends ChatEvent {
 class ChatReset extends ChatEvent {
   const ChatReset();
 }
+
+class ChatMessageReverted extends ChatEvent {
+  const ChatMessageReverted({required this.messageIndex});
+
+  final int messageIndex;
+
+  @override
+  List<Object?> get props => [messageIndex];
+}
+
+class ChatMessageDeleted extends ChatEvent {
+  const ChatMessageDeleted({required this.messageIndex});
+
+  final int messageIndex;
+
+  @override
+  List<Object?> get props => [messageIndex];
+}
+
+class ChatMessageRegenerateRequested extends ChatEvent {
+  const ChatMessageRegenerateRequested({required this.messageIndex});
+
+  final int messageIndex;
+
+  @override
+  List<Object?> get props => [messageIndex];
+}

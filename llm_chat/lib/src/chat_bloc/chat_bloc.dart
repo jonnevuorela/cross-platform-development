@@ -33,6 +33,9 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     on<ChatModelVariantLoaded>(_onModelVariantLoaded);
     on<ChatModelVariantChanged>(_onModelVariantChanged);
     on<ChatModelSwitchRequested>(_onModelSwitchRequested);
+    on<ChatMessageReverted>(_onMessageReverted);
+    on<ChatMessageDeleted>(_onMessageDeleted);
+    on<ChatMessageRegenerateRequested>(_onMessageRegenerateRequested);
   }
 
   final ChatRepository _repository;
@@ -113,16 +116,54 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       history: updatedMessages,
     );
 
+    await _streamResponse(prompt: prompt, emit: emit);
+  }
+
+  Future<void> _onStopStreaming(
+    ChatStopStreaming event,
+    Emitter<ChatState> emit,
+  ) async {
+    _repository.cancelGeneration();
+    _generationSubscription?.cancel();
+    _generationSubscription = null;
+    emit(state.copyWith(isStreaming: false));
+  }
+
+  Future<void> _onModelSwitchRequested(
+    ChatModelSwitchRequested event,
+    Emitter<ChatState> emit,
+  ) async {
+    _generationSubscription?.cancel();
+    _generationSubscription = null;
+    emit(state.copyWith(isStreaming: false, isLoadingModel: true));
+    try {
+      await _repository.loadModel(model: event.model);
+      emit(state.copyWith(
+        isLoadingModel: false,
+        selectedModel: event.model,
+        isAutoSelectedModel: false,
+      ));
+    } catch (error) {
+      emit(state.copyWith(
+        isLoadingModel: false,
+        error: error.toString(),
+      ));
+    }
+  }
+
+  Future<void> _streamResponse({
+    required String prompt,
+    required Emitter<ChatState> emit,
+  }) async {
     final assistant = ChatMessage(
       role: ChatRole.assistant,
       content: '',
       createdAt: DateTime.now(),
     );
-
-    final messagesWithAssistant = List<ChatMessage>.from(updatedMessages)
+    final messagesWithAssistant = List<ChatMessage>.from(state.messages)
       ..add(assistant);
 
-    emit(state.copyWith(messages: messagesWithAssistant));
+    emit(state.copyWith(messages: messagesWithAssistant, isStreaming: true));
 
     try {
       final stream = _repository.generate(
@@ -171,38 +212,6 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     } catch (error) {
       emit(state.copyWith(
         isStreaming: false,
-        error: error.toString(),
-      ));
-    }
-  }
-
-  Future<void> _onStopStreaming(
-    ChatStopStreaming event,
-    Emitter<ChatState> emit,
-  ) async {
-    _repository.cancelGeneration();
-    _generationSubscription?.cancel();
-    _generationSubscription = null;
-    emit(state.copyWith(isStreaming: false));
-  }
-
-  Future<void> _onModelSwitchRequested(
-    ChatModelSwitchRequested event,
-    Emitter<ChatState> emit,
-  ) async {
-    _generationSubscription?.cancel();
-    _generationSubscription = null;
-    emit(state.copyWith(isStreaming: false, isLoadingModel: true));
-    try {
-      await _repository.loadModel(model: event.model);
-      emit(state.copyWith(
-        isLoadingModel: false,
-        selectedModel: event.model,
-        isAutoSelectedModel: false,
-      ));
-    } catch (error) {
-      emit(state.copyWith(
-        isLoadingModel: false,
         error: error.toString(),
       ));
     }
@@ -294,6 +303,69 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       messages: selected.messages,
       recap: selected.recap,
     ));
+  }
+
+  void _onMessageReverted(
+    ChatMessageReverted event,
+    Emitter<ChatState> emit,
+  ) {
+    final updated = List<ChatMessage>.from(state.messages);
+    if (event.messageIndex < 0 || event.messageIndex >= updated.length) return;
+    updated.removeRange(event.messageIndex + 1, updated.length);
+    emit(state.copyWith(
+      messages: updated,
+      conversations: _updateActiveConversation(
+        messages: updated,
+        recap: state.recap,
+      ),
+    ));
+  }
+
+  void _onMessageDeleted(
+    ChatMessageDeleted event,
+    Emitter<ChatState> emit,
+  ) {
+    final updated = List<ChatMessage>.from(state.messages);
+    if (event.messageIndex < 0 || event.messageIndex >= updated.length) return;
+    updated.removeRange(event.messageIndex, updated.length);
+    emit(state.copyWith(
+      messages: updated,
+      conversations: _updateActiveConversation(
+        messages: updated,
+        recap: state.recap,
+      ),
+    ));
+  }
+
+  Future<void> _onMessageRegenerateRequested(
+    ChatMessageRegenerateRequested event,
+    Emitter<ChatState> emit,
+  ) async {
+    final messages = state.messages;
+    if (event.messageIndex < 1 || event.messageIndex >= messages.length) return;
+    if (messages[event.messageIndex].role != ChatRole.assistant) return;
+    if (messages[event.messageIndex - 1].role != ChatRole.user) return;
+
+    if (state.isStreaming || state.isLoadingModel) return;
+
+    await _repository.ensureReady(model: state.selectedModel!);
+
+    final updated = List<ChatMessage>.from(messages);
+    updated.removeRange(event.messageIndex, updated.length);
+    emit(state.copyWith(
+      messages: updated,
+      conversations: _updateActiveConversation(
+        messages: updated,
+        recap: state.recap,
+      ),
+    ));
+
+    final prompt = _buildPrompt(
+      recap: state.recap?.summary ?? '',
+      history: updated,
+    );
+
+    await _streamResponse(prompt: prompt, emit: emit);
   }
 
   void _onConversationRenamed(
