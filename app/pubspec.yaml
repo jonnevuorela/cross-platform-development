@@ -82,6 +82,8 @@ flutter:
   assets:
     - assets/models/gpt2-large/
     - assets/models/gpt2-large/onnx/
+    - assets/models/Qwen3-0.6b-heretic-ONNX/
+    - assets/models/Qwen3-0.6b-heretic-ONNX/onnx/
     - assets/models/Gemma3-1B/
     - assets/models/Gemma3-1B/onnx/
     - assets/models/SmolLM3-3B-ONNX/

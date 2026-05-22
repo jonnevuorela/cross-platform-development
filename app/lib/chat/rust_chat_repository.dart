@@ -25,11 +25,58 @@ class RustChatRepository implements ChatRepository {
     return modelsDir;
   }
 
+  /// On iOS, returns the filesystem path to flutter_assets/ inside the app bundle.
+  /// Model files at this path are real files — ONNX Runtime loads them directly.
+  /// Returns null on other platforms (assets must be copied to support dir).
+  String? _bundleAssetsRoot() {
+    if (!Platform.isIOS) return null;
+    try {
+      final appDir = File(Platform.resolvedExecutable).parent.path;
+      for (final path in [
+        '$appDir/Frameworks/App.framework/flutter_assets',
+        '$appDir/Frameworks/Flutter.framework/flutter_assets',
+        '$appDir/flutter_assets',
+      ]) {
+        print('[LLM] probing bundle path: $path');
+        if (File('$path/AssetManifest.bin').existsSync()) {
+          print('[LLM] bundle assets root found: $path');
+          return path;
+        }
+      }
+      // Fallback: scan every .framework for flutter_assets
+      final frameworksDir = Directory('$appDir/Frameworks');
+      if (frameworksDir.existsSync()) {
+        for (final entry in frameworksDir.listSync()) {
+          if (entry is Directory && entry.path.endsWith('.framework')) {
+            final fa = '${entry.path}/flutter_assets';
+            if (File('$fa/AssetManifest.bin').existsSync()) {
+              print('[LLM] bundle assets root found (fallback): $fa');
+              return fa;
+            }
+          }
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  String? _bundleModelsDir() {
+    final root = _bundleAssetsRoot();
+    if (root == null) return null;
+    final path = '$root/$_modelsAssetPrefix';
+    if (Directory(path).existsSync()) return path;
+    return null;
+  }
+
   Future<String> _computeCacheKey() async {
     final manifest = await AssetManifest.loadFromAssetBundle(rootBundle);
+    final bundleDir = _bundleModelsDir();
     final assets = manifest
         .listAssets()
         .where((a) => a.startsWith(_modelsAssetPrefix))
+        .where((a) => bundleDir != null
+            ? !a.endsWith('.onnx') && !a.endsWith('.onnx_data')
+            : true)
         .toList()
       ..sort();
     return assets.join('|');
@@ -37,6 +84,8 @@ class RustChatRepository implements ChatRepository {
 
   Future<void> _ensureBundledModels() async {
     final dir = await _modelsDir();
+    final bundleDir = _bundleModelsDir();
+    final hasBundle = bundleDir != null;
 
     final cacheKeyFile = File('${dir.path}/.cache_key');
     final expectedKey = await _computeCacheKey();
@@ -68,6 +117,12 @@ class RustChatRepository implements ChatRepository {
     for (final asset in modelAssets) {
       final relativePath = asset.substring(_modelsAssetPrefix.length);
       if (relativePath.isEmpty) continue;
+
+      // On iOS, model binaries are used directly from the app bundle
+      if (hasBundle && (relativePath.endsWith('.onnx') || relativePath.endsWith('.onnx_data'))) {
+        print('[LLM]   skip (bundle): $relativePath');
+        continue;
+      }
 
       print('[LLM]   copy: $relativePath');
       final destFile = File('${dir.path}/$relativePath');
@@ -272,17 +327,37 @@ class RustChatRepository implements ChatRepository {
   Future<List<ModelInfo>> availableModels() async {
     await _ensureBundledModels();
     final dir = await _modelsDir();
+    final bundleDir = _bundleModelsDir();
 
-    final entries = await dir.list().toList();
-    print('[LLM] availableModels: ${entries.length} entries in ${dir.path}');
-    for (final e in entries) {
-      print('  ${e is Directory ? "[DIR]" : "[FILE]"} ${e.path.split('/').last}');
+    // Collect model directories from support dir
+    final modelDirs = <Directory>[];
+    {
+      final entries = await dir.list().toList();
+      print('[LLM] availableModels: ${entries.length} entries in ${dir.path}');
+      for (final e in entries) {
+        if (e is Directory) {
+          print('  [DIR] ${e.path.split('/').last}');
+          modelDirs.add(e);
+        } else {
+          print('  [FILE] ${e.path.split('/').last}');
+        }
+      }
     }
 
-    final modelDirs = entries
-        .whereType<Directory>()
-        .toList()
-      ..sort((a, b) => a.path.compareTo(b.path));
+    // Scan bundle directory — prepend, bundle entries take priority
+    if (bundleDir != null) {
+      final bundleEntries = await Directory(bundleDir).list().toList();
+      for (final e in bundleEntries) {
+        if (e is Directory) {
+          final name = e.path.split('/').last;
+          modelDirs.removeWhere((d) => d.path.split('/').last == name);
+          modelDirs.insert(0, e);
+          print('[LLM]   bundle model: $name');
+        }
+      }
+    }
+
+    modelDirs.sort((a, b) => a.path.compareTo(b.path));
     print('[LLM] availableModels: ${modelDirs.length} model directories found');
 
     final models = <ModelInfo>[];
