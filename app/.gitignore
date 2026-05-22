@@ -165,4 +165,4 @@ app.*.map.json
 /android/app/release
 
 # Models
-/assets/models/onnx/*
+/assets/models/

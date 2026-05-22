@@ -349,6 +349,38 @@ class RustChatRepository implements ChatRepository {
     }
   }
 
+  /// Finds ONNX variant files and tokenizer in a model directory.
+  /// Supports both flat layout (.onnx in model root) and onnx/ subdirectory layout.
+  /// Returns (variantFiles, tokenizerPath).
+  Future<(List<File>, String)> _resolveOnnxVariants(Directory modelDir) async {
+    final List<File> rootOnnx = (await modelDir.list().toList())
+        .whereType<File>()
+        .where((f) => f.path.endsWith('.onnx'))
+        .toList();
+    final onnxDir = Directory('${modelDir.path}/onnx');
+    final List<File> onnxOnnx = (await onnxDir.exists())
+        ? (await onnxDir.list().toList())
+            .whereType<File>()
+            .where((f) => f.path.endsWith('.onnx'))
+            .toList()
+        : [];
+
+    final variants = (onnxOnnx.isNotEmpty ? onnxOnnx : rootOnnx)
+      ..sort((a, b) => a.path.compareTo(b.path));
+
+    final hasOnnxDir = onnxOnnx.isNotEmpty;
+    final usedDir = hasOnnxDir ? onnxDir : modelDir;
+    final onnxTokFile = '${usedDir.path}/tokenizer.json';
+    final rootTokFile = '${modelDir.path}/tokenizer.json';
+    final tokenizerFile =
+        (await File(onnxTokFile).exists()) ? onnxTokFile : rootTokFile;
+
+    print('[LLM]   ${variants.length} .onnx files found in ${hasOnnxDir ? "onnx/" : "root"}');
+    print('[LLM]   tokenizer: $tokenizerFile exists=${await File(tokenizerFile).exists()}');
+
+    return (variants, tokenizerFile);
+  }
+
   @override
   Future<List<ModelInfo>> availableModels() async {
     await _ensureBundledModels();
@@ -434,26 +466,7 @@ class RustChatRepository implements ChatRepository {
       print('[LLM]   tokens: eos=$resolvedEos bos=$resolvedBos'
           ' roleStart=$roleStartId roleEnd=$roleEndId turnEnd=$turnEndId');
 
-      final onnxDir = Directory('${modelDir.path}/onnx');
-      List<FileSystemEntity> onnxFiles;
-      if (await onnxDir.exists()) {
-        onnxFiles = await onnxDir.list().toList();
-      } else {
-        onnxFiles = [];
-      }
-      final variantFiles = onnxFiles
-          .whereType<File>()
-          .where((f) => f.path.endsWith('.onnx'))
-          .toList()
-        ..sort((a, b) => a.path.compareTo(b.path));
-      print('[LLM]   ${variantFiles.length} .onnx files found in onnx/');
-
-      // Prefer onnx/tokenizer.json — some exports put variant-specific tokenizers there
-      final onnxTokFile = '${modelDir.path}/onnx/tokenizer.json';
-      final rootTokFile = '${modelDir.path}/tokenizer.json';
-      final tokenizerFile = (await File(onnxTokFile).exists()) ? onnxTokFile : rootTokFile;
-      final tokenizerExists = await File(tokenizerFile).exists();
-      print('[LLM]   tokenizer: $tokenizerFile exists=$tokenizerExists');
+      final (variantFiles, tokenizerFile) = await _resolveOnnxVariants(modelDir);
 
       final half = (variantFiles.length + 1) ~/ 2;
       for (final f in variantFiles) {
