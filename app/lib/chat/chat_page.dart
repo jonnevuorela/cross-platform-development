@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:llm_chat/llm_chat.dart';
 import 'package:system_info2/system_info2.dart';
 
@@ -82,17 +83,22 @@ class _ChatPageState extends State<ChatPage> {
             ..add(const ChatStarted()),
       child: BlocConsumer<ChatBloc, ChatState>(
         listener: (context, state) {
-            _storage.save(
-              conversations: state.conversations,
-              activeConversationId: state.activeConversationId,
-              modelId: state.selectedModel?.id,
-              isAutoSelected: state.isAutoSelectedModel,
-            );
+          _storage.save(
+            conversations: state.conversations,
+            activeConversationId: state.activeConversationId,
+            modelId: state.selectedModel?.id,
+            isAutoSelected: state.isAutoSelectedModel,
+          );
 
           if (!_didInit) {
             _didInit = true;
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (!context.mounted) return;
+
+              context.read<ChatBloc>().add(ChatSettingsChanged(
+                    settings: _storageData!.settings,
+                  ));
+
               context.read<ChatBloc>().add(ChatConversationsLoaded(
                     conversations: _storageData!.conversations,
                     activeConversationId: _storageData!.activeConversationId,
@@ -133,6 +139,7 @@ class _ChatPageState extends State<ChatPage> {
           }
         },
         builder: (context, state) {
+          final fontSize = state.settings.fontSize;
           return Scaffold(
             drawer: _ChatDrawer(state: state),
             appBar: AppBar(
@@ -163,6 +170,7 @@ class _ChatPageState extends State<ChatPage> {
                                         .colorScheme
                                         .onSurface
                                         .withOpacity(0.85),
+                                    fontSize: fontSize - 2,
                                   ),
                             ),
                           ],
@@ -174,6 +182,10 @@ class _ChatPageState extends State<ChatPage> {
               foregroundColor: Theme.of(context).colorScheme.onBackground,
               actions: [
                 _ModelToggle(state: state),
+                IconButton(
+                  icon: const Icon(Icons.settings),
+                  onPressed: () => _showSettingsSheet(context, state),
+                ),
                 IconButton(
                   onPressed: () =>
                       context.read<ChatBloc>().add(const ChatConversationCreated()),
@@ -219,16 +231,27 @@ class _ChatPageState extends State<ChatPage> {
                   ),
                 if (state.isStreaming)
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     child: Row(
                       children: [
+                        IconButton(
+                          icon: const Icon(Icons.stop_circle, color: Colors.redAccent),
+                          iconSize: 22,
+                          onPressed: () =>
+                              context.read<ChatBloc>().add(const ChatStopStreaming()),
+                        ),
                         const SizedBox(
                           width: 14, height: 14,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         ),
-                        const SizedBox(width: 10),
+                        const SizedBox(width: 8),
                         Text('Generating\u2026',
-                            style: Theme.of(context).textTheme.bodySmall),
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(fontSize: fontSize - 2)),
+                        const Spacer(),
+                        Text('${state.settings.maxTokens} max',
+                            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                            )),
                       ],
                     ),
                   ),
@@ -248,64 +271,98 @@ class _ChatPageState extends State<ChatPage> {
                           ),
                         ),
                       ),
-                      ListView.builder(
-                        controller: _scrollController,
-                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 110),
-                        itemCount: state.messages.length,
-                        itemBuilder: (context, index) {
-                          final message = state.messages[index];
-                          final isUser = message.role == ChatRole.user;
-                          final theme = Theme.of(context);
-                          return Align(
-                            alignment: isUser
-                                ? Alignment.centerRight
-                                : Alignment.centerLeft,
-                            child: Container(
-                              margin: const EdgeInsets.symmetric(vertical: 8),
-                              padding: const EdgeInsets.all(14),
-                              constraints: const BoxConstraints(maxWidth: 340),
-                              decoration: BoxDecoration(
-                                color: (isUser
-                                        ? theme.colorScheme.surface
-                                        : theme.colorScheme.background)
-                                    .withOpacity(0.9),
-                                borderRadius: BorderRadius.only(
-                                  topLeft: const Radius.circular(16),
-                                  topRight: const Radius.circular(16),
-                                  bottomLeft:
-                                      Radius.circular(isUser ? 16 : 4),
-                                  bottomRight:
-                                      Radius.circular(isUser ? 4 : 16),
-                                ),
-                                border: Border.all(
-                                  color: theme.colorScheme.outline
-                                      .withOpacity(0.9),
-                                  width: 1.2,
-                                ),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withOpacity(
-                                        theme.brightness == Brightness.dark
-                                            ? 0.4
-                                            : 0.12),
-                                    blurRadius: 18,
-                                    offset: const Offset(0, 10),
-                                  ),
-                                ],
+                      SelectionArea(
+                        child: ListView.builder(
+                          controller: _scrollController,
+                          padding: const EdgeInsets.fromLTRB(16, 16, 16, 110),
+                          itemCount: state.messages.length,
+                          itemBuilder: (context, index) {
+                            final message = state.messages[index];
+                            final isUser = message.role == ChatRole.user;
+                            final theme = Theme.of(context);
+
+                            final mdStyle = MarkdownStyleSheet(
+                              p: TextStyle(
+                                color: theme.colorScheme.onSurface,
+                                fontSize: fontSize,
+                                height: 1.5,
                               ),
-                              child: Text(message.content,
-                                  style: TextStyle(
-                                      color: theme.colorScheme.onSurface,
-                                      height: 1.4)),
-                            ),
-                          );
-                        },
+                              code: TextStyle(
+                                color: theme.colorScheme.onSurface,
+                                fontSize: fontSize - 2,
+                                backgroundColor: theme.colorScheme.surfaceContainerHighest,
+                                fontFamily: 'monospace',
+                              ),
+                              codeblockDecoration: BoxDecoration(
+                                color: theme.colorScheme.surfaceContainerHighest,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              h1: TextStyle(fontSize: fontSize + 8, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
+                              h2: TextStyle(fontSize: fontSize + 4, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
+                              h3: TextStyle(fontSize: fontSize + 2, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
+                              listBullet: TextStyle(color: theme.colorScheme.onSurface),
+                              horizontalRuleDecoration: BoxDecoration(
+                                border: Border(top: BorderSide(color: theme.colorScheme.outline.withOpacity(0.3))),
+                              ),
+                              blockquoteDecoration: BoxDecoration(
+                                border: Border(left: BorderSide(color: theme.colorScheme.primary, width: 3)),
+                                color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.3),
+                              ),
+                            );
+
+                            return Align(
+                              alignment: isUser
+                                  ? Alignment.centerRight
+                                  : Alignment.centerLeft,
+                              child: Container(
+                                margin: const EdgeInsets.symmetric(vertical: 8),
+                                padding: const EdgeInsets.all(14),
+                                constraints: const BoxConstraints(maxWidth: 420),
+                                decoration: BoxDecoration(
+                                  color: (isUser
+                                          ? theme.colorScheme.surface
+                                          : theme.colorScheme.background)
+                                      .withOpacity(0.9),
+                                  borderRadius: BorderRadius.only(
+                                    topLeft: const Radius.circular(16),
+                                    topRight: const Radius.circular(16),
+                                    bottomLeft:
+                                        Radius.circular(isUser ? 16 : 4),
+                                    bottomRight:
+                                        Radius.circular(isUser ? 4 : 16),
+                                  ),
+                                  border: Border.all(
+                                    color: theme.colorScheme.outline
+                                        .withOpacity(0.9),
+                                    width: 1.2,
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(
+                                          theme.brightness == Brightness.dark
+                                              ? 0.4
+                                              : 0.12),
+                                      blurRadius: 18,
+                                      offset: const Offset(0, 10),
+                                    ),
+                                  ],
+                                ),
+                                child: MarkdownBody(
+                                  data: message.content,
+                                  selectable: true,
+                                  styleSheet: mdStyle,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
                       ),
                       Positioned(
                         left: 16, right: 16, bottom: 16,
                         child: _ChatComposer(
                           controller: _controller,
                           isStreaming: state.isStreaming,
+                          fontSize: fontSize,
                           onSend: () => _send(context),
                         ),
                       ),
@@ -333,19 +390,141 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 
+  void _showSettingsSheet(BuildContext context, ChatState state) {
+    final settings = state.settings;
+    var localSettings = settings;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setSheetState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                left: 20, right: 20, top: 12,
+                bottom: MediaQuery.of(ctx).viewInsets.bottom + 20,
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text('Settings',
+                            style: Theme.of(ctx).textTheme.titleLarge),
+                        const Spacer(),
+                        IconButton(
+                          icon: const Icon(Icons.close),
+                          onPressed: () => Navigator.of(ctx).pop(),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    _settingsSlider(
+                      ctx, 'Font Size', '${localSettings.fontSize.toStringAsFixed(0)}pt',
+                      localSettings.fontSize, 10, 24, 1,
+                      (v) => setSheetState(() => localSettings = localSettings.copyWith(fontSize: v)),
+                    ),
+                    const Divider(),
+                    _settingsSlider(
+                      ctx, 'Temperature', localSettings.temperature.toStringAsFixed(2),
+                      localSettings.temperature, 0.0, 2.0, 0.05,
+                      (v) => setSheetState(() => localSettings = localSettings.copyWith(temperature: v)),
+                    ),
+                    _settingsSlider(
+                      ctx, 'Top-P', localSettings.topP.toStringAsFixed(2),
+                      localSettings.topP, 0.0, 1.0, 0.05,
+                      (v) => setSheetState(() => localSettings = localSettings.copyWith(topP: v)),
+                    ),
+                    _settingsSlider(
+                      ctx, 'Top-K', '${localSettings.topK}',
+                      localSettings.topK.toDouble(), 1, 200, 1,
+                      (v) => setSheetState(() => localSettings = localSettings.copyWith(topK: v.round())),
+                    ),
+                    _settingsSlider(
+                      ctx, 'Rep. Penalty', localSettings.repetitionPenalty.toStringAsFixed(2),
+                      localSettings.repetitionPenalty, 0.5, 2.0, 0.05,
+                      (v) => setSheetState(() => localSettings = localSettings.copyWith(repetitionPenalty: v)),
+                    ),
+                    _settingsSlider(
+                      ctx, 'Max Tokens', '${localSettings.maxTokens}',
+                      localSettings.maxTokens.toDouble(), 64, 2048, 64,
+                      (v) => setSheetState(() => localSettings = localSettings.copyWith(maxTokens: v.round())),
+                    ),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton(
+                        onPressed: () {
+                          context.read<ChatBloc>().add(ChatSettingsChanged(settings: localSettings));
+                          _storage.saveSettings(localSettings);
+                          Navigator.of(ctx).pop();
+                        },
+                        child: const Text('Apply'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
 
-
+  Widget _settingsSlider(
+    BuildContext ctx,
+    String label,
+    String value,
+    double current,
+    double min,
+    double max,
+    double step,
+    void Function(double) onChanged,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 100,
+            child: Text(label, style: Theme.of(ctx).textTheme.bodyMedium),
+          ),
+          Expanded(
+            child: Slider(
+              value: current.clamp(min, max),
+              min: min,
+              max: max,
+              divisions: ((max - min) / step).round().clamp(1, 1000),
+              onChanged: onChanged,
+            ),
+          ),
+          SizedBox(
+            width: 56,
+            child: Text(value,
+                style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
+                  fontFamily: 'monospace',
+                )),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _ChatComposer extends StatelessWidget {
   const _ChatComposer({
     required this.controller,
     required this.isStreaming,
+    required this.fontSize,
     required this.onSend,
   });
 
   final TextEditingController controller;
   final bool isStreaming;
+  final double fontSize;
   final VoidCallback onSend;
 
   @override
@@ -375,7 +554,10 @@ class _ChatComposer extends StatelessWidget {
               controller: controller,
               textInputAction: TextInputAction.send,
               onSubmitted: (_) => onSend(),
-              style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurface,
+                fontSize: fontSize,
+              ),
               decoration: const InputDecoration(
                   hintText: 'Type a message', border: InputBorder.none),
             ),
@@ -400,17 +582,9 @@ class _ModelToggle extends StatelessWidget {
     final available = state.availableModels;
     return PopupMenuButton<ModelInfo>(
       icon: const Icon(Icons.tune),
-      onSelected: (model) async {
+      onSelected: (model) {
         if (model.id == state.selectedModel?.id) return;
-        try {
-          await context.read<ChatRepository>().loadModel(model: model);
-          if (!context.mounted) return;
-          context.read<ChatBloc>().add(ChatModelVariantChanged(model: model));
-          Toasts.show('Loaded ${model.label}', context: context);
-        } catch (error) {
-          if (!context.mounted) return;
-          Toasts.show('Model load failed: $error', context: context);
-        }
+        context.read<ChatBloc>().add(ChatModelSwitchRequested(model: model));
       },
       itemBuilder: (context) {
         final entries = <PopupMenuEntry<ModelInfo>>[];

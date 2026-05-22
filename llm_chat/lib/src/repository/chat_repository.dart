@@ -1,5 +1,6 @@
 import '../models/chat_chunk.dart';
 import '../models/chat_message.dart';
+import '../models/chat_settings.dart';
 import '../models/model_info.dart';
 
 abstract class ChatRepository {
@@ -12,8 +13,10 @@ abstract class ChatRepository {
   Stream<ChatChunk> generate({
     required String prompt,
     required ModelInfo model,
-    int maxTokens = 128,
+    required ChatSettings settings,
   });
+
+  void cancelGeneration();
 
   Future<String> summarize({
     required List<ChatMessage> history,

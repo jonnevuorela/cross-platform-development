@@ -7,6 +7,7 @@ export 'src/models/chat_chunk.dart';
 export 'src/models/chat_conversation.dart';
 export 'src/models/chat_message.dart';
 export 'src/models/chat_recap.dart';
+export 'src/models/chat_settings.dart';
 export 'src/models/model_info.dart';
 
 export 'src/repository/chat_repository.dart';

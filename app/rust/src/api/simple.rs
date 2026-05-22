@@ -1,11 +1,13 @@
 use crate::frb_generated::StreamSink;
 use half::f16;
-use once_cell::sync::OnceCell;
 use ort::{
     session::{builder::GraphOptimizationLevel, Session},
     value::{Tensor, TensorElementType, ValueType},
     Error,
 };
+use rand::Rng;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Mutex, PoisonError};
 use tokenizers::Tokenizer;
 
 struct ModelConfig {
@@ -14,8 +16,16 @@ struct ModelConfig {
     head_dim: i64,
     vocab_size: i64,
     eos_token_id: i64,
-    im_start_id: i64,
-    im_end_id: i64,
+    bos_token_id: i64,
+    role_start_id: i64,
+    role_end_id: i64,
+    turn_end_id: i64,
+}
+
+struct AppInner {
+    session: Session,
+    tokenizer: Tokenizer,
+    cfg: ModelConfig,
 }
 
 struct KvCache {
@@ -40,7 +50,15 @@ impl KvCache {
     }
 }
 
-const REPETITION_PENALTY: f32 = 1.15;
+static APP: Mutex<Option<AppInner>> = Mutex::new(None);
+static CANCEL: AtomicBool = AtomicBool::new(false);
+
+fn lock_app() -> std::sync::MutexGuard<'static, Option<AppInner>> {
+    APP.lock().unwrap_or_else(|e: PoisonError<_>| {
+        eprintln!("[LLM] mutex poisoned, recovering");
+        e.into_inner()
+    })
+}
 
 #[flutter_rust_bridge::frb(sync)]
 pub fn greet(name: String) -> String {
@@ -52,9 +70,17 @@ pub fn init_app() {
     flutter_rust_bridge::setup_default_user_utils();
 }
 
-static SESSION: std::sync::Mutex<Option<Session>> = std::sync::Mutex::new(None);
-static TOKENIZER: OnceCell<Tokenizer> = OnceCell::new();
-static CONFIG: OnceCell<ModelConfig> = OnceCell::new();
+pub fn cancel_generation() {
+    CANCEL.store(true, Ordering::SeqCst);
+    eprintln!("[LLM] cancel flag set");
+}
+
+pub fn reset_model() {
+    let mut guard = lock_app();
+    *guard = None;
+    CANCEL.store(false, Ordering::SeqCst);
+    eprintln!("[LLM] model reset - session dropped");
+}
 
 pub fn init_model(
     model_path: String,
@@ -64,9 +90,13 @@ pub fn init_model(
     head_dim: i64,
     vocab_size: i64,
     eos_token_id: i64,
-    im_start_id: i64,
-    im_end_id: i64,
+    bos_token_id: i64,
+    role_start_id: i64,
+    role_end_id: i64,
+    turn_end_id: i64,
 ) -> Result<(), Error> {
+    CANCEL.store(true, Ordering::SeqCst);
+
     let result = (|| {
         let tokenizer = Tokenizer::from_file(&tokenizer_path)
             .map_err(|e| Error::new(format!("Tokenizer error: {e}")))?;
@@ -105,25 +135,36 @@ pub fn init_model(
             head_dim,
             vocab_size,
             eos_token_id,
-            im_start_id,
-            im_end_id,
+            bos_token_id,
+            role_start_id,
+            role_end_id,
+            turn_end_id,
         };
 
-        let _ = TOKENIZER.set(tokenizer);
-        let _ = CONFIG.set(cfg);
-        *SESSION.lock().map_err(|e| Error::new(format!("Session lock: {e}")))? = Some(session);
+        let mut guard = lock_app();
+        *guard = Some(AppInner { session, tokenizer, cfg });
+        CANCEL.store(false, Ordering::SeqCst);
+        eprintln!("[LLM] model loaded successfully");
         Ok(())
     })();
 
     if let Err(ref err) = result {
+        CANCEL.store(false, Ordering::SeqCst);
         eprintln!("[LLM] init_model error: {err}");
     }
 
     result
 }
 
-pub fn generate(prompt: String, max_tokens: u32) -> Result<Vec<String>, Error> {
-    match run_generate(&prompt, max_tokens, None) {
+pub fn generate(
+    prompt: String,
+    max_tokens: u32,
+    temperature: f32,
+    top_p: f32,
+    top_k: i64,
+    repetition_penalty: f32,
+) -> Result<Vec<String>, Error> {
+    match run_generate(&prompt, max_tokens, temperature, top_p, top_k, repetition_penalty, None) {
         Ok(tokens) => Ok(tokens),
         Err(err) => {
             eprintln!("[LLM] generate error: {err}");
@@ -135,9 +176,13 @@ pub fn generate(prompt: String, max_tokens: u32) -> Result<Vec<String>, Error> {
 pub fn generate_stream(
     prompt: String,
     max_tokens: u32,
+    temperature: f32,
+    top_p: f32,
+    top_k: i64,
+    repetition_penalty: f32,
     stream: StreamSink<String>,
 ) -> Result<(), Error> {
-    match run_generate(&prompt, max_tokens, Some(&stream)) {
+    match run_generate(&prompt, max_tokens, temperature, top_p, top_k, repetition_penalty, Some(&stream)) {
         Ok(_) => Ok(()),
         Err(err) => {
             eprintln!("[LLM] generate_stream error: {err}");
@@ -208,10 +253,80 @@ fn remove_self_intro(text: &str) -> Option<String> {
     Some(String::new())
 }
 
-fn run_generate(prompt: &str, max_tokens: u32, sink: Option<&StreamSink<String>>) -> Result<Vec<String>, Error> {
-    let tokenizer = TOKENIZER.get().ok_or_else(|| Error::new("Tokenizer not initialized"))?;
-    let cfg = CONFIG.get().ok_or_else(|| Error::new("Config not initialized"))?;
-    let newline_ids = encode_text(tokenizer, "\n")?;
+fn softmax(logits: &[f32]) -> Vec<f32> {
+    let max_val = logits.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+    let exps: Vec<f32> = logits.iter().map(|v| (v - max_val).exp()).collect();
+    let sum: f32 = exps.iter().sum();
+    exps.iter().map(|v| v / sum).collect()
+}
+
+fn sample_top_k_top_p(probs: &[f32], top_k: usize, top_p: f32) -> usize {
+    let mut indices: Vec<usize> = (0..probs.len()).collect();
+    indices.sort_unstable_by(|&a, &b| probs[b].partial_cmp(&probs[a]).unwrap_or(std::cmp::Ordering::Equal));
+
+    let limit = if top_k > 0 && top_k < indices.len() { top_k } else { indices.len() };
+    indices.truncate(limit);
+
+    let mut cumsum = 0.0f32;
+    let cutoff = indices.iter().position(|&i| {
+        cumsum += probs[i];
+        cumsum >= top_p
+    });
+    let limit2 = cutoff.map(|c| c + 1).unwrap_or(indices.len()).min(indices.len());
+    indices.truncate(limit2);
+
+    if indices.is_empty() {
+        return 0;
+    }
+
+    let sub_probs: Vec<f32> = indices.iter().map(|&i| probs[i]).collect();
+    let sub_sum: f32 = sub_probs.iter().sum();
+    if sub_sum <= 0.0 {
+        return indices[0];
+    }
+
+    let mut rng = rand::thread_rng();
+    let r: f32 = rng.gen::<f32>() * sub_sum;
+    let mut accum = 0.0f32;
+    for (idx, &prob) in sub_probs.iter().enumerate() {
+        accum += prob;
+        if r <= accum {
+            return indices[idx];
+        }
+    }
+    indices[indices.len() - 1]
+}
+
+fn run_generate(
+    prompt: &str,
+    max_tokens: u32,
+    temperature: f32,
+    top_p: f32,
+    top_k: i64,
+    repetition_penalty: f32,
+    sink: Option<&StreamSink<String>>,
+) -> Result<Vec<String>, Error> {
+    let inner = {
+        let guard = lock_app();
+        guard.as_ref().ok_or_else(|| Error::new("Model not loaded"))?;
+        let inner = guard.as_ref().unwrap();
+        let tokenizer = inner.tokenizer.clone();
+        let cfg = ModelConfig {
+            num_layers: inner.cfg.num_layers,
+            num_kv_heads: inner.cfg.num_kv_heads,
+            head_dim: inner.cfg.head_dim,
+            vocab_size: inner.cfg.vocab_size,
+            eos_token_id: inner.cfg.eos_token_id,
+            bos_token_id: inner.cfg.bos_token_id,
+            role_start_id: inner.cfg.role_start_id,
+            role_end_id: inner.cfg.role_end_id,
+            turn_end_id: inner.cfg.turn_end_id,
+        };
+        (tokenizer, cfg)
+    };
+
+    let (tokenizer, cfg) = inner;
+    let newline_ids = encode_text(&tokenizer, "\n")?;
 
     let system_prompt = "You are a helpful assistant. Answer concisely and stop when done.";
     let user_message = prompt.trim();
@@ -222,56 +337,74 @@ fn run_generate(prompt: &str, max_tokens: u32, sink: Option<&StreamSink<String>>
 
     let mut all_ids = Vec::new();
 
-    all_ids.push(cfg.im_start_id);
-    all_ids.extend(&encode_text(tokenizer, "system")?);
+    if cfg.bos_token_id >= 0 {
+        all_ids.push(cfg.bos_token_id);
+    }
+
+    all_ids.push(cfg.role_start_id);
+    all_ids.extend(&encode_text(&tokenizer, "system")?);
+    if cfg.role_end_id >= 0 {
+        all_ids.push(cfg.role_end_id);
+    }
     all_ids.extend(&newline_ids);
-    all_ids.extend(&encode_text(tokenizer, system_prompt)?);
-    all_ids.push(cfg.im_end_id);
+    all_ids.extend(&encode_text(&tokenizer, system_prompt)?);
+    all_ids.push(cfg.turn_end_id);
     all_ids.extend(&newline_ids);
 
-    all_ids.push(cfg.im_start_id);
-    all_ids.extend(&encode_text(tokenizer, "user")?);
+    all_ids.push(cfg.role_start_id);
+    all_ids.extend(&encode_text(&tokenizer, "user")?);
+    if cfg.role_end_id >= 0 {
+        all_ids.push(cfg.role_end_id);
+    }
     all_ids.extend(&newline_ids);
-    all_ids.extend(&encode_text(tokenizer, user_message)?);
-    all_ids.push(cfg.im_end_id);
+    all_ids.extend(&encode_text(&tokenizer, user_message)?);
+    all_ids.push(cfg.turn_end_id);
     all_ids.extend(&newline_ids);
 
-    all_ids.push(cfg.im_start_id);
-    all_ids.extend(&encode_text(tokenizer, "assistant")?);
+    all_ids.push(cfg.role_start_id);
+    all_ids.extend(&encode_text(&tokenizer, "assistant")?);
+    if cfg.role_end_id >= 0 {
+        all_ids.push(cfg.role_end_id);
+    }
     all_ids.extend(&newline_ids);
 
     let mut kv_cache = KvCache::new(cfg.num_layers);
     let mut output_tokens = Vec::new();
     let max_steps = max_tokens as usize;
+    let top_k_usize = if top_k > 0 { top_k as usize } else { cfg.vocab_size as usize };
+    let temp = if temperature <= 0.0 { 1.0 } else { temperature };
 
     let mut prefix_buf = String::new();
     let mut prefix_resolved = false;
 
     for step in 0..max_steps {
+        if CANCEL.load(Ordering::SeqCst) {
+            eprintln!("[LLM] generation cancelled at step {step}");
+            CANCEL.store(false, Ordering::SeqCst);
+            break;
+        }
+
         let (input_ids, past_seq_len) = if step == 0 {
             (all_ids.clone(), 0i64)
         } else {
             let last = vec![all_ids[all_ids.len() - 1]];
-            (last, kv_cache.seq_len(cfg))
+            (last, kv_cache.seq_len(&cfg))
         };
 
         let kv_seq_len = past_seq_len.max(1);
 
         let (logits, new_seq_len): (Vec<f32>, usize) = {
-            let mut session_guard = SESSION
-                .lock()
-                .map_err(|_| Error::new("Session lock poisoned"))?;
-            let session = session_guard
-                .as_mut()
-                .ok_or_else(|| Error::new("Model not initialized"))?;
+            let mut guard = lock_app();
+            let app = guard.as_mut().ok_or_else(|| Error::new("Model unloaded during generation"))?;
+            let session = &mut app.session;
             let input_specs: Vec<(String, ValueType)> = session
                 .inputs()
                 .iter()
                 .map(|input| (input.name().to_string(), input.dtype().clone()))
                 .collect();
-            let inputs = build_inputs(&input_specs, cfg, &input_ids, &kv_cache, kv_seq_len)?;
+            let inputs = build_inputs(&input_specs, &cfg, &input_ids, &kv_cache, kv_seq_len)?;
             let outputs = Session::run(session, inputs)?;
-            let (data, new_len) = extract_logits_and_kv(outputs.iter(), &mut kv_cache, cfg)?;
+            let (data, new_len) = extract_logits_and_kv(outputs.iter(), &mut kv_cache, &cfg)?;
             (data, new_len)
         };
 
@@ -285,19 +418,31 @@ fn run_generate(prompt: &str, max_tokens: u32, sink: Option<&StreamSink<String>>
         let end = start + cfg.vocab_size as usize;
         let slice = &logits[start..end.min(logits.len())];
 
-        let mut logits_vec: Vec<(usize, f32)> = slice.iter().copied().enumerate().collect();
+        let mut logits_vec: Vec<f32> = slice.to_vec();
+
+        if logits_vec.len() > cfg.vocab_size as usize {
+            logits_vec.truncate(cfg.vocab_size as usize);
+        }
+
+        if cfg.vocab_size as usize > logits_vec.len() {
+            logits_vec.resize(cfg.vocab_size as usize, f32::NEG_INFINITY);
+        }
+
         let local_ids = &all_ids[all_ids.len().saturating_sub(50)..];
-        for (idx, val) in logits_vec.iter_mut() {
-            if *idx as i64 >= cfg.vocab_size {
-                continue;
-            }
-            if local_ids.contains(&(*idx as i64)) {
-                *val /= REPETITION_PENALTY;
+        for (idx, val) in logits_vec.iter_mut().enumerate() {
+            if local_ids.contains(&(idx as i64)) {
+                *val /= repetition_penalty;
             }
         }
-        logits_vec.sort_unstable_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-        let token_id = logits_vec[0].0;
-        if token_id as i64 == cfg.im_end_id || token_id as i64 == cfg.eos_token_id {
+
+        for val in logits_vec.iter_mut() {
+            *val /= temp;
+        }
+
+        let probs = softmax(&logits_vec);
+        let token_id = sample_top_k_top_p(&probs, top_k_usize, top_p);
+
+        if token_id as i64 == cfg.eos_token_id || token_id as i64 == cfg.turn_end_id {
             break;
         }
         all_ids.push(token_id as i64);
@@ -338,6 +483,10 @@ fn run_generate(prompt: &str, max_tokens: u32, sink: Option<&StreamSink<String>>
             }
         }
         output_tokens.push(piece);
+    }
+
+    if CANCEL.load(Ordering::SeqCst) {
+        CANCEL.store(false, Ordering::SeqCst);
     }
 
     if let Some(s) = sink {

@@ -66,7 +66,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.12.0';
 
   @override
-  int get rustContentHash => 1470918206;
+  int get rustContentHash => -1538458293;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -78,14 +78,24 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
 }
 
 abstract class RustLibApi extends BaseApi {
+  Future<void> crateApiSimpleCancelGeneration();
+
   Future<List<String>> crateApiSimpleGenerate({
     required String prompt,
     required int maxTokens,
+    required double temperature,
+    required double topP,
+    required PlatformInt64 topK,
+    required double repetitionPenalty,
   });
 
   Stream<String> crateApiSimpleGenerateStream({
     required String prompt,
     required int maxTokens,
+    required double temperature,
+    required double topP,
+    required PlatformInt64 topK,
+    required double repetitionPenalty,
   });
 
   String crateApiSimpleGreet({required String name});
@@ -100,9 +110,13 @@ abstract class RustLibApi extends BaseApi {
     required PlatformInt64 headDim,
     required PlatformInt64 vocabSize,
     required PlatformInt64 eosTokenId,
-    required PlatformInt64 imStartId,
-    required PlatformInt64 imEndId,
+    required PlatformInt64 bosTokenId,
+    required PlatformInt64 roleStartId,
+    required PlatformInt64 roleEndId,
+    required PlatformInt64 turnEndId,
   });
+
+  Future<void> crateApiSimpleResetModel();
 }
 
 class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
@@ -114,16 +128,11 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   });
 
   @override
-  Future<List<String>> crateApiSimpleGenerate({
-    required String prompt,
-    required int maxTokens,
-  }) {
+  Future<void> crateApiSimpleCancelGeneration() {
     return handler.executeNormal(
       NormalTask(
         callFfi: (port_) {
           final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_String(prompt, serializer);
-          sse_encode_u_32(maxTokens, serializer);
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
@@ -132,11 +141,58 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           );
         },
         codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiSimpleCancelGenerationConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSimpleCancelGenerationConstMeta =>
+      const TaskConstMeta(debugName: "cancel_generation", argNames: []);
+
+  @override
+  Future<List<String>> crateApiSimpleGenerate({
+    required String prompt,
+    required int maxTokens,
+    required double temperature,
+    required double topP,
+    required PlatformInt64 topK,
+    required double repetitionPenalty,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(prompt, serializer);
+          sse_encode_u_32(maxTokens, serializer);
+          sse_encode_f_32(temperature, serializer);
+          sse_encode_f_32(topP, serializer);
+          sse_encode_i_64(topK, serializer);
+          sse_encode_f_32(repetitionPenalty, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 2,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
           decodeSuccessData: sse_decode_list_String,
           decodeErrorData: sse_decode_AnyhowException,
         ),
         constMeta: kCrateApiSimpleGenerateConstMeta,
-        argValues: [prompt, maxTokens],
+        argValues: [
+          prompt,
+          maxTokens,
+          temperature,
+          topP,
+          topK,
+          repetitionPenalty,
+        ],
         apiImpl: this,
       ),
     );
@@ -144,13 +200,24 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   TaskConstMeta get kCrateApiSimpleGenerateConstMeta => const TaskConstMeta(
     debugName: "generate",
-    argNames: ["prompt", "maxTokens"],
+    argNames: [
+      "prompt",
+      "maxTokens",
+      "temperature",
+      "topP",
+      "topK",
+      "repetitionPenalty",
+    ],
   );
 
   @override
   Stream<String> crateApiSimpleGenerateStream({
     required String prompt,
     required int maxTokens,
+    required double temperature,
+    required double topP,
+    required PlatformInt64 topK,
+    required double repetitionPenalty,
   }) {
     final stream = RustStreamSink<String>();
     unawaited(
@@ -160,11 +227,15 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             final serializer = SseSerializer(generalizedFrbRustBinding);
             sse_encode_String(prompt, serializer);
             sse_encode_u_32(maxTokens, serializer);
+            sse_encode_f_32(temperature, serializer);
+            sse_encode_f_32(topP, serializer);
+            sse_encode_i_64(topK, serializer);
+            sse_encode_f_32(repetitionPenalty, serializer);
             sse_encode_StreamSink_String_Sse(stream, serializer);
             pdeCallFfi(
               generalizedFrbRustBinding,
               serializer,
-              funcId: 2,
+              funcId: 3,
               port: port_,
             );
           },
@@ -173,7 +244,15 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             decodeErrorData: sse_decode_AnyhowException,
           ),
           constMeta: kCrateApiSimpleGenerateStreamConstMeta,
-          argValues: [prompt, maxTokens, stream],
+          argValues: [
+            prompt,
+            maxTokens,
+            temperature,
+            topP,
+            topK,
+            repetitionPenalty,
+            stream,
+          ],
           apiImpl: this,
         ),
       ),
@@ -184,7 +263,15 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   TaskConstMeta get kCrateApiSimpleGenerateStreamConstMeta =>
       const TaskConstMeta(
         debugName: "generate_stream",
-        argNames: ["prompt", "maxTokens", "stream"],
+        argNames: [
+          "prompt",
+          "maxTokens",
+          "temperature",
+          "topP",
+          "topK",
+          "repetitionPenalty",
+          "stream",
+        ],
       );
 
   @override
@@ -194,7 +281,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_String(name, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 3)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 4)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_String,
@@ -219,7 +306,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 4,
+            funcId: 5,
             port: port_,
           );
         },
@@ -246,8 +333,10 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     required PlatformInt64 headDim,
     required PlatformInt64 vocabSize,
     required PlatformInt64 eosTokenId,
-    required PlatformInt64 imStartId,
-    required PlatformInt64 imEndId,
+    required PlatformInt64 bosTokenId,
+    required PlatformInt64 roleStartId,
+    required PlatformInt64 roleEndId,
+    required PlatformInt64 turnEndId,
   }) {
     return handler.executeNormal(
       NormalTask(
@@ -260,12 +349,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           sse_encode_i_64(headDim, serializer);
           sse_encode_i_64(vocabSize, serializer);
           sse_encode_i_64(eosTokenId, serializer);
-          sse_encode_i_64(imStartId, serializer);
-          sse_encode_i_64(imEndId, serializer);
+          sse_encode_i_64(bosTokenId, serializer);
+          sse_encode_i_64(roleStartId, serializer);
+          sse_encode_i_64(roleEndId, serializer);
+          sse_encode_i_64(turnEndId, serializer);
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 5,
+            funcId: 6,
             port: port_,
           );
         },
@@ -282,8 +373,10 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           headDim,
           vocabSize,
           eosTokenId,
-          imStartId,
-          imEndId,
+          bosTokenId,
+          roleStartId,
+          roleEndId,
+          turnEndId,
         ],
         apiImpl: this,
       ),
@@ -300,10 +393,39 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       "headDim",
       "vocabSize",
       "eosTokenId",
-      "imStartId",
-      "imEndId",
+      "bosTokenId",
+      "roleStartId",
+      "roleEndId",
+      "turnEndId",
     ],
   );
+
+  @override
+  Future<void> crateApiSimpleResetModel() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 7,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiSimpleResetModelConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSimpleResetModelConstMeta =>
+      const TaskConstMeta(debugName: "reset_model", argNames: []);
 
   @protected
   AnyhowException dco_decode_AnyhowException(dynamic raw) {
@@ -321,6 +443,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   String dco_decode_String(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as String;
+  }
+
+  @protected
+  double dco_decode_f_32(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as double;
   }
 
   @protected
@@ -379,6 +507,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var inner = sse_decode_list_prim_u_8_strict(deserializer);
     return utf8.decoder.convert(inner);
+  }
+
+  @protected
+  double sse_decode_f_32(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return deserializer.buffer.getFloat32();
   }
 
   @protected
@@ -465,6 +599,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   void sse_encode_String(String self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_list_prim_u_8_strict(utf8.encoder.convert(self), serializer);
+  }
+
+  @protected
+  void sse_encode_f_32(double self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    serializer.buffer.putFloat32(self);
   }
 
   @protected

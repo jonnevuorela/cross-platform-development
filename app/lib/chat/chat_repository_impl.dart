@@ -27,8 +27,10 @@ class EchoChatRepository implements ChatRepository {
         headDim: 64,
         vocabSize: 49152,
         eosTokenId: 2,
-        imStartId: 1,
-        imEndId: 2,
+        bosTokenId: -1,
+        roleStartId: 1,
+        roleEndId: -1,
+        turnEndId: 2,
       ),
     ];
   }
@@ -37,11 +39,14 @@ class EchoChatRepository implements ChatRepository {
   Stream<ChatChunk> generate({
     required String prompt,
     required ModelInfo model,
-    int maxTokens = 128,
+    required ChatSettings settings,
   }) async* {
     final response = '${model.label} echo: $prompt';
     yield ChatChunk(text: response, isFinal: true);
   }
+
+  @override
+  void cancelGeneration() {}
 
   @override
   Future<String> summarize({

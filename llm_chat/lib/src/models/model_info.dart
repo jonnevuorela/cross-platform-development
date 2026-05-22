@@ -12,8 +12,10 @@ class ModelInfo {
     required this.headDim,
     required this.vocabSize,
     required this.eosTokenId,
-    required this.imStartId,
-    required this.imEndId,
+    required this.bosTokenId,
+    required this.roleStartId,
+    required this.roleEndId,
+    required this.turnEndId,
   });
 
   final String id;
@@ -28,8 +30,10 @@ class ModelInfo {
   final int headDim;
   final int vocabSize;
   final int eosTokenId;
-  final int imStartId;
-  final int imEndId;
+  final int bosTokenId;
+  final int roleStartId;
+  final int roleEndId;
+  final int turnEndId;
 
   @override
   bool operator ==(Object other) {

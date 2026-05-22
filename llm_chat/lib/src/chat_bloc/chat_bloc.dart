@@ -20,6 +20,8 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         super(ChatState.initial()) {
     on<ChatStarted>(_onStarted);
     on<ChatMessageSent>(_onMessageSent);
+    on<ChatStopStreaming>(_onStopStreaming);
+    on<ChatSettingsChanged>(_onSettingsChanged);
     on<ChatReset>(_onReset);
     on<ChatConversationCreated>(_onConversationCreated);
     on<ChatConversationSelected>(_onConversationSelected);
@@ -30,17 +32,24 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     on<ChatConversationPinned>(_onConversationPinned);
     on<ChatModelVariantLoaded>(_onModelVariantLoaded);
     on<ChatModelVariantChanged>(_onModelVariantChanged);
+    on<ChatModelSwitchRequested>(_onModelSwitchRequested);
   }
 
   final ChatRepository _repository;
   final int recapThreshold;
   final int recentTailCount;
+  StreamSubscription<ChatChunk>? _generationSubscription;
+
+  @override
+  Future<void> close() {
+    _generationSubscription?.cancel();
+    return super.close();
+  }
 
   Future<void> _onStarted(
     ChatStarted event,
     Emitter<ChatState> emit,
   ) async {
-    emit(state.copyWith(isLoadingModel: true, error: null));
     try {
       final models = await _repository.availableModels();
       final initialModel = models.isNotEmpty ? models.first : null;
@@ -48,15 +57,8 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         availableModels: models,
         selectedModel: initialModel,
       ));
-      if (initialModel != null) {
-        await _repository.loadModel(model: initialModel);
-      }
-      emit(state.copyWith(isLoadingModel: false));
     } catch (error) {
-      emit(state.copyWith(
-        isLoadingModel: false,
-        error: error.toString(),
-      ));
+      emit(state.copyWith(error: error.toString()));
     }
   }
 
@@ -123,36 +125,49 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     emit(state.copyWith(messages: messagesWithAssistant));
 
     try {
-      await emit.forEach<ChatChunk>(
-        _repository.generate(
-          prompt: prompt,
-          model: state.selectedModel!,
-        ),
-        onData: (chunk) {
+      final stream = _repository.generate(
+        prompt: prompt,
+        model: state.selectedModel!,
+        settings: state.settings,
+      );
+      _generationSubscription = stream.listen(
+        (chunk) {
           final latest = List<ChatMessage>.from(state.messages);
-          if (latest.isEmpty) {
-            return state;
-          }
+          if (latest.isEmpty) return;
 
           final lastIndex = latest.length - 1;
           final lastMessage = latest[lastIndex];
-          if (lastMessage.role != ChatRole.assistant) {
-            return state;
-          }
+          if (lastMessage.role != ChatRole.assistant) return;
 
           latest[lastIndex] = lastMessage.copyWith(
             content: '${lastMessage.content}${chunk.text}',
           );
 
-          return state.copyWith(
+          emit(state.copyWith(
             messages: latest,
-            conversations: _updateActiveConversation(messages: latest, recap: state.recap),
-          );
+            conversations: _updateActiveConversation(
+              messages: latest,
+              recap: state.recap,
+            ),
+          ));
+        },
+        onDone: () {
+          _generationSubscription = null;
+          if (!isClosed) {
+            emit(state.copyWith(isStreaming: false));
+            _maybeSummarize(emit);
+          }
+        },
+        onError: (error) {
+          _generationSubscription = null;
+          if (!isClosed) {
+            emit(state.copyWith(
+              isStreaming: false,
+              error: error.toString(),
+            ));
+          }
         },
       );
-
-      emit(state.copyWith(isStreaming: false));
-      await _maybeSummarize(emit);
     } catch (error) {
       emit(state.copyWith(
         isStreaming: false,
@@ -161,10 +176,53 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     }
   }
 
+  Future<void> _onStopStreaming(
+    ChatStopStreaming event,
+    Emitter<ChatState> emit,
+  ) async {
+    _repository.cancelGeneration();
+    _generationSubscription?.cancel();
+    _generationSubscription = null;
+    emit(state.copyWith(isStreaming: false));
+  }
+
+  Future<void> _onModelSwitchRequested(
+    ChatModelSwitchRequested event,
+    Emitter<ChatState> emit,
+  ) async {
+    _generationSubscription?.cancel();
+    _generationSubscription = null;
+    emit(state.copyWith(isStreaming: false, isLoadingModel: true));
+    try {
+      await _repository.loadModel(model: event.model);
+      emit(state.copyWith(
+        isLoadingModel: false,
+        selectedModel: event.model,
+        isAutoSelectedModel: false,
+      ));
+    } catch (error) {
+      emit(state.copyWith(
+        isLoadingModel: false,
+        error: error.toString(),
+      ));
+    }
+  }
+
+  Future<void> _onSettingsChanged(
+    ChatSettingsChanged event,
+    Emitter<ChatState> emit,
+  ) async {
+    emit(state.copyWith(settings: event.settings));
+  }
+
   Future<void> _onReset(ChatReset event, Emitter<ChatState> emit) async {
+    _repository.cancelGeneration();
+    _generationSubscription?.cancel();
+    _generationSubscription = null;
     emit(ChatState.initial().copyWith(
       selectedModel: state.selectedModel,
       availableModels: state.availableModels,
+      settings: state.settings,
     ));
   }
 
@@ -172,29 +230,15 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     ChatConversationsLoaded event,
     Emitter<ChatState> emit,
   ) {
-    if (event.conversations.isEmpty) {
-      final conversation = _createConversation();
-      emit(state.copyWith(
-        conversations: [conversation],
-        activeConversationId: conversation.id,
-        messages: conversation.messages,
-        recap: conversation.recap,
-      ));
-      return;
-    }
-
+    final fresh = _createConversation();
     final sorted = _sortConversations(event.conversations);
-    final activeId = event.activeConversationId ?? sorted.first.id;
-    final active = sorted.firstWhere(
-      (conversation) => conversation.id == activeId,
-      orElse: () => sorted.first,
-    );
+    final allConversations = [fresh, ...sorted];
 
     emit(state.copyWith(
-      conversations: sorted,
-      activeConversationId: active.id,
-      messages: active.messages,
-      recap: active.recap,
+      conversations: allConversations,
+      activeConversationId: fresh.id,
+      messages: fresh.messages,
+      recap: fresh.recap,
     ));
   }
 
@@ -441,5 +485,4 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
 
     return buffer.toString().trim();
   }
-
 }

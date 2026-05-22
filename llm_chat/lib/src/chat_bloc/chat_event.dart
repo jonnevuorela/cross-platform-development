@@ -1,6 +1,7 @@
 import 'package:equatable/equatable.dart';
 
 import '../models/chat_conversation.dart';
+import '../models/chat_settings.dart';
 import '../models/model_info.dart';
 
 class ChatEvent extends Equatable {
@@ -21,6 +22,19 @@ class ChatMessageSent extends ChatEvent {
 
   @override
   List<Object?> get props => [content];
+}
+
+class ChatStopStreaming extends ChatEvent {
+  const ChatStopStreaming();
+}
+
+class ChatSettingsChanged extends ChatEvent {
+  const ChatSettingsChanged({required this.settings});
+
+  final ChatSettings settings;
+
+  @override
+  List<Object?> get props => [settings];
 }
 
 class ChatConversationSelected extends ChatEvent {
@@ -105,6 +119,15 @@ class ChatModelVariantChanged extends ChatEvent {
   const ChatModelVariantChanged({
     required this.model,
   });
+
+  final ModelInfo model;
+
+  @override
+  List<Object?> get props => [model];
+}
+
+class ChatModelSwitchRequested extends ChatEvent {
+  const ChatModelSwitchRequested({required this.model});
 
   final ModelInfo model;
 

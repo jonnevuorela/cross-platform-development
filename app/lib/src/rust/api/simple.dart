@@ -6,11 +6,16 @@
 import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `build_inputs`, `encode_text`, `extract_logits_and_kv`, `extract_tensor_flexible`, `log_model_io`, `new`, `remove_self_intro`, `run_generate`, `seq_len`, `strip_label_prefix`, `tensor_elem_type`
-// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `KvCache`, `ModelConfig`
+// These functions are ignored because they are not marked as `pub`: `build_inputs`, `encode_text`, `extract_logits_and_kv`, `extract_tensor_flexible`, `lock_app`, `log_model_io`, `new`, `remove_self_intro`, `run_generate`, `sample_top_k_top_p`, `seq_len`, `softmax`, `strip_label_prefix`, `tensor_elem_type`
+// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `AppInner`, `KvCache`, `ModelConfig`
 
 String greet({required String name}) =>
     RustLib.instance.api.crateApiSimpleGreet(name: name);
+
+Future<void> cancelGeneration() =>
+    RustLib.instance.api.crateApiSimpleCancelGeneration();
+
+Future<void> resetModel() => RustLib.instance.api.crateApiSimpleResetModel();
 
 Future<void> initModel({
   required String modelPath,
@@ -20,8 +25,10 @@ Future<void> initModel({
   required PlatformInt64 headDim,
   required PlatformInt64 vocabSize,
   required PlatformInt64 eosTokenId,
-  required PlatformInt64 imStartId,
-  required PlatformInt64 imEndId,
+  required PlatformInt64 bosTokenId,
+  required PlatformInt64 roleStartId,
+  required PlatformInt64 roleEndId,
+  required PlatformInt64 turnEndId,
 }) => RustLib.instance.api.crateApiSimpleInitModel(
   modelPath: modelPath,
   tokenizerPath: tokenizerPath,
@@ -30,22 +37,40 @@ Future<void> initModel({
   headDim: headDim,
   vocabSize: vocabSize,
   eosTokenId: eosTokenId,
-  imStartId: imStartId,
-  imEndId: imEndId,
+  bosTokenId: bosTokenId,
+  roleStartId: roleStartId,
+  roleEndId: roleEndId,
+  turnEndId: turnEndId,
 );
 
 Future<List<String>> generate({
   required String prompt,
   required int maxTokens,
+  required double temperature,
+  required double topP,
+  required PlatformInt64 topK,
+  required double repetitionPenalty,
 }) => RustLib.instance.api.crateApiSimpleGenerate(
   prompt: prompt,
   maxTokens: maxTokens,
+  temperature: temperature,
+  topP: topP,
+  topK: topK,
+  repetitionPenalty: repetitionPenalty,
 );
 
 Stream<String> generateStream({
   required String prompt,
   required int maxTokens,
+  required double temperature,
+  required double topP,
+  required PlatformInt64 topK,
+  required double repetitionPenalty,
 }) => RustLib.instance.api.crateApiSimpleGenerateStream(
   prompt: prompt,
   maxTokens: maxTokens,
+  temperature: temperature,
+  topP: topP,
+  topK: topK,
+  repetitionPenalty: repetitionPenalty,
 );

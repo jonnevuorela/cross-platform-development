@@ -49,6 +49,7 @@ dependencies:
     path: rust_builder
   flutter_rust_bridge: 2.12.0
   system_info2: ^4.0.0
+  flutter_markdown: ^0.7.7+1
 
 dev_dependencies:
   flutter_test:
@@ -79,10 +80,12 @@ flutter:
   # the material Icons class.
   uses-material-design: true
   assets:
-    - assets/models/SmolLM2-135M-Instruct/
-    - assets/models/SmolLM2-135M-Instruct/onnx/
+    - assets/models/gpt2-large/
+    - assets/models/gpt2-large/onnx/
     - assets/models/Gemma3-1B/
     - assets/models/Gemma3-1B/onnx/
+    - assets/models/SmolLM3-3B-ONNX/
+    - assets/models/SmolLM3-3B-ONNX/onnx/
     - assets/media/images/
 
   # To add assets to your application, add an assets section, like this:

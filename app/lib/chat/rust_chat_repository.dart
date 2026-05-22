@@ -129,34 +129,77 @@ class RustChatRepository implements ChatRepository {
     }
   }
 
-  int _findImStartId(Map<String, dynamic> tokCfg) {
+  int _findTokenId(Map<String, dynamic>? tokCfg, String content, int defaultId) {
+    if (tokCfg == null) return defaultId;
     final decoder = tokCfg['added_tokens_decoder'] as Map<String, dynamic>?;
-    if (decoder == null) return 1;
+    if (decoder == null) return defaultId;
     for (final entry in decoder.entries) {
       final token = entry.value as Map<String, dynamic>?;
-      if (token != null && token['content'] == '<|im_start|>') {
+      if (token != null && token['content'] == content) {
         return int.parse(entry.key);
       }
     }
-    return 1;
+    return defaultId;
   }
 
-  int _findImEndId(Map<String, dynamic> tokCfg) {
-    final decoder = tokCfg['added_tokens_decoder'] as Map<String, dynamic>?;
-    if (decoder == null) return 2;
-    for (final entry in decoder.entries) {
-      final token = entry.value as Map<String, dynamic>?;
-      if (token != null && token['content'] == '<|im_end|>') {
-        return int.parse(entry.key);
+  /// Detects which chat template tokens the model uses by examining
+  /// [chat_template.jinja] (most authoritative) then falling back to
+  /// [added_tokens_decoder] heuristics.
+  /// Returns (roleStartId, roleEndId, turnEndId).
+  (int, int, int) _detectTemplateTokens(
+    Map<String, dynamic>? tokCfg,
+    String? modelDirPath, {
+    required int defaultRoleStart,
+    required int defaultTurnEnd,
+  }) {
+    // 1) Try chat_template.jinja
+    if (modelDirPath != null) {
+      final templateFile = File('$modelDirPath/chat_template.jinja');
+      if (templateFile.existsSync()) {
+        final content = templateFile.readAsStringSync();
+        // Llama3-style uses <|start_header_id|>
+        if (content.contains('<|start_header_id|>')) {
+          final startH = _findTokenId(tokCfg, '<|start_header_id|>', 128006);
+          final endH = _findTokenId(tokCfg, '<|end_header_id|>', 128007);
+          final eot = _findTokenId(tokCfg, '<|eot_id|>', 128009);
+          return (startH, endH, eot);
+        }
       }
     }
-    return 2;
+
+    // 2) Fallback: check added_tokens_decoder for format-determining tokens
+    if (tokCfg != null) {
+      final decoder = tokCfg['added_tokens_decoder'] as Map<String, dynamic>?;
+      if (decoder != null) {
+        for (final entry in decoder.entries) {
+          final token = entry.value as Map<String, dynamic>?;
+          if (token == null) continue;
+          final content = token['content'] as String?;
+          // Llama3-style detected via start_header_id
+          if (content == '<|start_header_id|>') {
+            final startH = int.parse(entry.key);
+            final endH = _findTokenId(tokCfg, '<|end_header_id|>', 128007);
+            final eot = _findTokenId(tokCfg, '<|eot_id|>', 128009);
+            return (startH, endH, eot);
+          }
+        }
+      }
+    }
+
+    // 3) Default: ChatML (im_start / im_end)
+    final imStart = _findTokenId(tokCfg, '<|im_start|>', defaultRoleStart);
+    final imEnd = _findTokenId(tokCfg, '<|im_end|>', defaultTurnEnd);
+    return (imStart, -1, imEnd);
   }
 
   @override
   Future<void> loadModel({required ModelInfo model}) async {
     _isModelReady = false;
     _initError = null;
+    // Drop the old model first, before any fallible operation, so the old
+    // session is freed even if the subsequent steps throw.
+    await rust_api.cancelGeneration();
+    await rust_api.resetModel();
     await _ensureBundledModels();
     await rust_api.initModel(
       modelPath: model.path,
@@ -166,8 +209,10 @@ class RustChatRepository implements ChatRepository {
       headDim: model.headDim,
       vocabSize: model.vocabSize,
       eosTokenId: model.eosTokenId,
-      imStartId: model.imStartId,
-      imEndId: model.imEndId,
+      bosTokenId: model.bosTokenId,
+      roleStartId: model.roleStartId,
+      roleEndId: model.roleEndId,
+      turnEndId: model.turnEndId,
     );
     _isModelReady = true;
   }
@@ -208,12 +253,10 @@ class RustChatRepository implements ChatRepository {
       final modelLabel = _labelFromDirName(dirName);
       print('[LLM] scanning dir "$dirName" (label="$modelLabel")');
 
-      // Read HF configs
       final config = await _readJsonFile('${modelDir.path}/config.json');
       final genConfig = await _readJsonFile('${modelDir.path}/generation_config.json');
       final tokConfig = await _readJsonFile('${modelDir.path}/tokenizer_config.json');
 
-      // Architecture params
       final numLayers = config?['num_hidden_layers'] as int? ?? 30;
       final numKvHeads = config?['num_key_value_heads'] as int? ?? 3;
       final hiddenSize = config?['hidden_size'] as int?;
@@ -222,19 +265,26 @@ class RustChatRepository implements ChatRepository {
           ?? (hiddenSize != null && numAttnHeads != null ? hiddenSize ~/ numAttnHeads : 64);
       final vocabSize = config?['vocab_size'] as int? ?? 49152;
 
-      // Token IDs
       final genEos = genConfig?['eos_token_id'];
       final eosTokenId = genEos is List ? genEos.first as int : (genEos as int?);
       final cfgEos = config?['eos_token_id'];
       final resolvedEos = eosTokenId ?? (cfgEos is List ? cfgEos.first as int : (cfgEos as int?)) ?? 2;
 
-      final imStartId = tokConfig != null ? _findImStartId(tokConfig) : 1;
-      final imEndId = tokConfig != null ? _findImEndId(tokConfig) : 2;
+      final bosFromGen = genConfig?['bos_token_id'] as int?;
+      final bosFromCfg = config?['bos_token_id'] as int?;
+      final resolvedBos = bosFromGen ?? bosFromCfg ?? -1;
+
+      final (roleStartId, roleEndId, turnEndId) = _detectTemplateTokens(
+        tokConfig,
+        modelDir.path,
+        defaultRoleStart: 1,
+        defaultTurnEnd: 2,
+      );
 
       print('[LLM]   arch: layers=$numLayers kv=$numKvHeads head=$headDim vocab=$vocabSize');
-      print('[LLM]   tokens: eos=$resolvedEos im_start=$imStartId im_end=$imEndId');
+      print('[LLM]   tokens: eos=$resolvedEos bos=$resolvedBos'
+          ' roleStart=$roleStartId roleEnd=$roleEndId turnEnd=$turnEndId');
 
-      // Discover variants from onnx/ subdirectory
       final onnxDir = Directory('${modelDir.path}/onnx');
       List<FileSystemEntity> onnxFiles;
       if (await onnxDir.exists()) {
@@ -272,8 +322,10 @@ class RustChatRepository implements ChatRepository {
           headDim: headDim,
           vocabSize: vocabSize,
           eosTokenId: resolvedEos,
-          imStartId: imStartId,
-          imEndId: imEndId,
+          bosTokenId: resolvedBos,
+          roleStartId: roleStartId,
+          roleEndId: roleEndId,
+          turnEndId: turnEndId,
         ));
       }
     }
@@ -282,13 +334,25 @@ class RustChatRepository implements ChatRepository {
   }
 
   @override
+  void cancelGeneration() {
+    rust_api.cancelGeneration();
+  }
+
+  @override
   Stream<ChatChunk> generate({
     required String prompt,
     required ModelInfo model,
-    int maxTokens = 128,
+    required ChatSettings settings,
   }) {
     return rust_api
-        .generateStream(prompt: prompt, maxTokens: maxTokens)
+        .generateStream(
+          prompt: prompt,
+          maxTokens: settings.maxTokens,
+          temperature: settings.temperature,
+          topP: settings.topP,
+          topK: settings.topK,
+          repetitionPenalty: settings.repetitionPenalty,
+        )
         .handleError((error, stackTrace) {
           print('[LLM] generate_stream error: $error');
         })

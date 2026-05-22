@@ -7,12 +7,14 @@ class ChatStorageData {
     required this.activeConversationId,
     required this.modelId,
     required this.isAutoSelected,
+    required this.settings,
   });
 
   final List<ChatConversation> conversations;
   final String? activeConversationId;
   final String? modelId;
   final bool isAutoSelected;
+  final ChatSettings settings;
 }
 
 class ChatStorage {
@@ -21,6 +23,7 @@ class ChatStorage {
   static const _activeIdKey = 'active_conversation_id';
   static const _modelVariantKey = 'model_variant';
   static const _modelAutoKey = 'model_variant_auto';
+  static const _settingsKey = 'chat_settings';
 
   Future<ChatStorageData> load() async {
     final box = await Hive.openBox<dynamic>(_boxName);
@@ -28,6 +31,10 @@ class ChatStorage {
     final activeId = box.get(_activeIdKey) as String?;
     final modelVariantRaw = box.get(_modelVariantKey) as String?;
     final isAutoSelected = box.get(_modelAutoKey) as bool? ?? true;
+    final settingsRaw = box.get(_settingsKey);
+    final settings = settingsRaw is Map
+        ? ChatSettings.fromMap(Map<String, dynamic>.from(settingsRaw as Map))
+        : const ChatSettings();
 
     if (rawList == null) {
       return ChatStorageData(
@@ -35,6 +42,7 @@ class ChatStorage {
         activeConversationId: null,
         modelId: modelVariantRaw,
         isAutoSelected: isAutoSelected,
+        settings: settings,
       );
     }
 
@@ -48,6 +56,7 @@ class ChatStorage {
       activeConversationId: activeId,
       modelId: modelVariantRaw,
       isAutoSelected: isAutoSelected,
+      settings: settings,
     );
   }
 
@@ -58,11 +67,20 @@ class ChatStorage {
     required bool isAutoSelected,
   }) async {
     final box = await Hive.openBox<dynamic>(_boxName);
-    final payload = conversations.map(_conversationToMap).toList();
+    // Don't persist empty conversations (e.g. fresh startup, user never typed)
+    final nonEmpty = conversations
+        .where((c) => c.messages.isNotEmpty)
+        .toList();
+    final payload = nonEmpty.map(_conversationToMap).toList();
     await box.put(_conversationsKey, payload);
     await box.put(_activeIdKey, activeConversationId);
     await box.put(_modelVariantKey, modelId);
     await box.put(_modelAutoKey, isAutoSelected);
+  }
+
+  Future<void> saveSettings(ChatSettings settings) async {
+    final box = await Hive.openBox<dynamic>(_boxName);
+    await box.put(_settingsKey, settings.toMap());
   }
 
   Map<String, dynamic> _conversationToMap(ChatConversation conversation) {

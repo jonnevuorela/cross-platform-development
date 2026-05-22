@@ -3,6 +3,7 @@ import 'package:equatable/equatable.dart';
 import '../models/chat_conversation.dart';
 import '../models/chat_message.dart';
 import '../models/chat_recap.dart';
+import '../models/chat_settings.dart';
 import '../models/model_info.dart';
 
 class ChatState extends Equatable {
@@ -17,6 +18,7 @@ class ChatState extends Equatable {
     required this.selectedModel,
     required this.isAutoSelectedModel,
     required this.availableModels,
+    required this.settings,
   });
 
   factory ChatState.initial() {
@@ -31,6 +33,7 @@ class ChatState extends Equatable {
       selectedModel: null,
       isAutoSelectedModel: true,
       availableModels: const [],
+      settings: const ChatSettings(),
     );
   }
 
@@ -44,6 +47,7 @@ class ChatState extends Equatable {
   final ModelInfo? selectedModel;
   final bool isAutoSelectedModel;
   final List<ModelInfo> availableModels;
+  final ChatSettings settings;
 
   ChatState copyWith({
     List<ChatMessage>? messages,
@@ -56,6 +60,7 @@ class ChatState extends Equatable {
     ModelInfo? selectedModel,
     bool? isAutoSelectedModel,
     List<ModelInfo>? availableModels,
+    ChatSettings? settings,
   }) {
     return ChatState(
       messages: messages ?? this.messages,
@@ -68,6 +73,7 @@ class ChatState extends Equatable {
       selectedModel: selectedModel ?? this.selectedModel,
       isAutoSelectedModel: isAutoSelectedModel ?? this.isAutoSelectedModel,
       availableModels: availableModels ?? this.availableModels,
+      settings: settings ?? this.settings,
     );
   }
 
@@ -83,5 +89,6 @@ class ChatState extends Equatable {
         selectedModel,
         isAutoSelectedModel,
         availableModels,
+        settings,
       ];
 }
