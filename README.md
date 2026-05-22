@@ -2,8 +2,37 @@
 
 ***
 
+20.5.2026 - 22.5.2026
 
-13.5.2026
+### Publishing the app
+
+#### Things to consider
+
+As stated in last entry, the first obstacle might be on bundling the app correctly. Its easy to develop an app with external dependencies for desktop or web use where you have the same filesystem in use as on your development environment. Containing all in an app bundle might be a whole another episode.
+
+Another big hoop to jump trough is pleasing the platform provider. I've read a lot of stories where Google/Apple acts as a  bridge troll and demands pleasing their ideology. Their platform their rules, but the way they have essentially monopolized the installing of software on each platform and then demanding such compliance, leaves me in disbelief. Sure apple has now recently allowed third party installations on their devices after Epic Games made EU to do so, but it is by not any means still obvious to common users that you can even do so. Even crazier is that Google has been mutilating Android lately even more into Google OS and they are just now trying to disable the possibility of third party software installation. I guess people in EU area are safe from that, but either way its done with malice towards their  own customer base. 
+
+For the App Store, you need an Apple developer account which can be made free, but I beleive that there is some kind of subscription you have to pay if you want to publish an app in the store. I would think its kinda the same for google store.
+
+#### Final steps with the app
+
+I got the build to run on an iPhone and even using the ANE. The models that it can run are really useless, but I'd like to think that with some prompt optimization and some actual agentic capabilities this could be somewhat "useful" program to have. 
+
+The the useful capabiliteies would be gps location tracking and web searches. ie. you are in some new place and want to get info on restaurants near you. Of course this can be done better by any llm chat provider and google will automatically relay your concerns to gemini, but if you take in concern the usage price or digital sovereignty, this could be an option. 
+
+Maybe we see something like this getting useful in someday.
+
+![](./journal/media/chat_demo3.gif)
+
+The chat feature was entirely vibe coded and I am not trying to claim that I have done anything technically challenging there, but it was nice to see what goes into a traditional llm chat interface and how the token input/output handling can really enhance the experience with a small model. 
+
+I used mainly DeepSeek V4 Flash Free tier from Opencode zen with Opencode, but also some GPT-5.2-Codex. I believe that the vibe coding made the implementation more stressful even if it was saving me some time. It ended up taking three or so days anyways. I trust that the architecture is somewhat right as I stated that it should be built with same architecture from the bloc github search. Pretty late into working on this I asked to add functionality to edit the conversation history by reverting to some message, regenerating output or by deleting messages. It was nice to see that it was fairly simple to implement so late into progress by adding functions to the bloc.
+
+
+
+***
+
+13.5.2026 - 20.5.2026
 
 ### Platform specific code
 
@@ -37,7 +66,24 @@ Back and forth few rounds with the agent enhancing the chatting experience, I go
 
 These are not light matters and being a 3B parameter model is hard enough already.
 
+Eventually I got the prompt better and the output started making sense, but it was still running just on the cpu so it is slow.
+![](./journal/media/chat_demo2.gif)
+
+The video is at 10x speed.
+
 Now to pull the project on a mac and try to build a ios version. this wasn't so straight forward. I have only ever build and sideloaded one app on iphone prior to this one and the process wasn't smooth then and it wasn't smooth now. Eventually I got the build signed and solved also static linking problems I initially had. The models were not properly included in the bundle and there was also problems statically linking all the rust code and C++ code, but I managed eventually.
+
+The problem I had on running the app properly on ios was, that rust lib got stripped away as a dead code, since its called in runtime. On desktop that wouldn't be a problem since it could be dynamically linked from the systems libraries but on platforms like windows, android or ios, you have to statically link the libraries or for windows provide the proper .dll files along side. It ended up being quite hard to modify the build configs to properly include the rust libs.
+
+Second problem was with the models. How to pack the models into the app bundle, so I don't have to introduce a model downloader for the app. And to not have it too easy, my mac has only 256GB drive, so juggling between few different builds and models got quite cumbersome.
+
+![](./journal/media/chat_demo.gif)
+
+I did not even bother to look up how to include such huge assets into the app bundle correctly. I went straight to ai agent and asked to do it, but I am not sure if that was a right call. The whole circus of doing long builds and moving between my desktop and mac and iphone to test the final build was taking great amount of time and ended up being a three day long endeavor. The agent tweaked a lot the xcconfig files mainly, so this fix is expected to be done again platform specifically. Not quite right for cross-platform development.
+
+Because of that, I would take a different approach on including the models to app like this by introducing the model loader which  could load models ie. from Huggingface api.
+
+Technically I got the rust up and running on linux and ios on same code, but couldn't test the model on iPhone. The final straw was with including the models in the bundling process. AI agent tried all sorts of scripts to manually copy the model files to the bundle in build process, but I lost my patience on this one as its taken quite some days now.
 
 
 
