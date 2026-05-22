@@ -25,11 +25,37 @@ class RustChatRepository implements ChatRepository {
     return modelsDir;
   }
 
+  /// On iOS, returns the filesystem path to flutter_assets/ inside the app bundle.
+  /// Model files at this path are real files — ONNX Runtime loads them directly.
+  /// Returns null on other platforms (assets must be copied to support dir).
+  String? _bundleAssetsRoot() {
+    if (!Platform.isIOS) return null;
+    try {
+      final execPath = Platform.resolvedExecutable;
+      final appDir = File(execPath).parent.path;
+      final path = '$appDir/Frameworks/App.framework/flutter_assets';
+      if (Directory(path).existsSync()) return path;
+    } catch (_) {}
+    return null;
+  }
+
+  String? _bundleModelsDir() {
+    final root = _bundleAssetsRoot();
+    if (root == null) return null;
+    final path = '$root/$_modelsAssetPrefix';
+    if (Directory(path).existsSync()) return path;
+    return null;
+  }
+
   Future<String> _computeCacheKey() async {
     final manifest = await AssetManifest.loadFromAssetBundle(rootBundle);
+    final bundleDir = _bundleModelsDir();
     final assets = manifest
         .listAssets()
         .where((a) => a.startsWith(_modelsAssetPrefix))
+        .where((a) => bundleDir != null
+            ? !a.endsWith('.onnx') && !a.endsWith('.onnx_data')
+            : true)
         .toList()
       ..sort();
     return assets.join('|');
@@ -37,6 +63,8 @@ class RustChatRepository implements ChatRepository {
 
   Future<void> _ensureBundledModels() async {
     final dir = await _modelsDir();
+    final bundleDir = _bundleModelsDir();
+    final hasBundle = bundleDir != null;
 
     final cacheKeyFile = File('${dir.path}/.cache_key');
     final expectedKey = await _computeCacheKey();
@@ -68,6 +96,11 @@ class RustChatRepository implements ChatRepository {
     for (final asset in modelAssets) {
       final relativePath = asset.substring(_modelsAssetPrefix.length);
       if (relativePath.isEmpty) continue;
+
+      // On iOS, model binaries are used directly from the app bundle
+      if (hasBundle && (relativePath.endsWith('.onnx') || relativePath.endsWith('.onnx_data'))) {
+        continue;
+      }
 
       final destFile = File('${dir.path}/$relativePath');
       await destFile.parent.create(recursive: true);
@@ -157,11 +190,9 @@ class RustChatRepository implements ChatRepository {
   /// Returns (roleStartId, roleEndId, turnEndId).
   (int, int, int) _detectTemplateTokens(
     Map<String, dynamic>? tokCfg,
-    String? modelDirPath, {
-    required int defaultRoleStart,
-    required int defaultTurnEnd,
-  }) {
-    // 1) Try chat_template.jinja
+    String? modelDirPath,
+  ) {
+    // 1) Try chat_template.jinja (most authoritative)
     if (modelDirPath != null) {
       final templateFile = File('$modelDirPath/chat_template.jinja');
       if (templateFile.existsSync()) {
@@ -172,6 +203,12 @@ class RustChatRepository implements ChatRepository {
           final endH = _findTokenId(tokCfg, '<|end_header_id|>', 128007);
           final eot = _findTokenId(tokCfg, '<|eot_id|>', 128009);
           return (startH, endH, eot);
+        }
+        // ChatML-style uses <|im_start|>
+        if (content.contains('<|im_start|>')) {
+          final imStart = _findTokenId(tokCfg, '<|im_start|>', 128011);
+          final imEnd = _findTokenId(tokCfg, '<|im_end|>', 128012);
+          return (imStart, -1, imEnd);
         }
       }
     }
@@ -184,21 +221,23 @@ class RustChatRepository implements ChatRepository {
           final token = entry.value as Map<String, dynamic>?;
           if (token == null) continue;
           final content = token['content'] as String?;
-          // Llama3-style detected via start_header_id
           if (content == '<|start_header_id|>') {
             final startH = int.parse(entry.key);
             final endH = _findTokenId(tokCfg, '<|end_header_id|>', 128007);
             final eot = _findTokenId(tokCfg, '<|eot_id|>', 128009);
             return (startH, endH, eot);
           }
+          if (content == '<|im_start|>') {
+            final imStart = int.parse(entry.key);
+            final imEnd = _findTokenId(tokCfg, '<|im_end|>', 128012);
+            return (imStart, -1, imEnd);
+          }
         }
       }
     }
 
-    // 3) Default: ChatML (im_start / im_end)
-    final imStart = _findTokenId(tokCfg, '<|im_start|>', defaultRoleStart);
-    final imEnd = _findTokenId(tokCfg, '<|im_end|>', defaultTurnEnd);
-    return (imStart, -1, imEnd);
+    // 3) Default: no format detected — plain mode (no special tokens)
+    return (-1, -1, -1);
   }
 
   @override
@@ -242,17 +281,37 @@ class RustChatRepository implements ChatRepository {
   Future<List<ModelInfo>> availableModels() async {
     await _ensureBundledModels();
     final dir = await _modelsDir();
+    final bundleDir = _bundleModelsDir();
 
-    final entries = await dir.list().toList();
-    print('[LLM] availableModels: ${entries.length} entries in ${dir.path}');
-    for (final e in entries) {
-      print('  ${e is Directory ? "[DIR]" : "[FILE]"} ${e.path.split('/').last}');
+    // Collect model directories from support dir
+    final modelDirs = <Directory>[];
+    {
+      final entries = await dir.list().toList();
+      print('[LLM] availableModels: ${entries.length} entries in ${dir.path}');
+      for (final e in entries) {
+        if (e is Directory) {
+          print('  [DIR] ${e.path.split('/').last}');
+          modelDirs.add(e);
+        } else {
+          print('  [FILE] ${e.path.split('/').last}');
+        }
+      }
     }
 
-    final modelDirs = entries
-        .whereType<Directory>()
-        .toList()
-      ..sort((a, b) => a.path.compareTo(b.path));
+    // Scan bundle directory — prepend, bundle entries take priority
+    if (bundleDir != null) {
+      final bundleEntries = await Directory(bundleDir).list().toList();
+      for (final e in bundleEntries) {
+        if (e is Directory) {
+          final name = e.path.split('/').last;
+          modelDirs.removeWhere((d) => d.path.split('/').last == name);
+          modelDirs.insert(0, e);
+          print('[LLM]   bundle model: $name');
+        }
+      }
+    }
+
+    modelDirs.sort((a, b) => a.path.compareTo(b.path));
     print('[LLM] availableModels: ${modelDirs.length} model directories found');
 
     final models = <ModelInfo>[];
@@ -294,8 +353,6 @@ class RustChatRepository implements ChatRepository {
       final (roleStartId, roleEndId, turnEndId) = _detectTemplateTokens(
         tokConfig,
         modelDir.path,
-        defaultRoleStart: 1,
-        defaultTurnEnd: 2,
       );
 
       print('[LLM]   arch: layers=$numLayers kv=$numKvHeads($numAttnHeads) head=$headDim hidden=$hiddenSize vocab=$vocabSize');

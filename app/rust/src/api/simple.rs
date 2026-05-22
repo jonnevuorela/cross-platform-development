@@ -340,38 +340,53 @@ fn run_generate(
         return Ok(vec![]);
     }
 
+    let plain = cfg.role_start_id < 0 && cfg.role_end_id < 0 && cfg.turn_end_id < 0;
+
     let mut all_ids = Vec::new();
 
-    if cfg.bos_token_id >= 0 {
-        all_ids.push(cfg.bos_token_id);
-    }
+    if plain {
+        if cfg.bos_token_id >= 0 {
+            all_ids.push(cfg.bos_token_id);
+        }
+        all_ids.extend(&encode_text(&tokenizer, system_prompt)?);
+        all_ids.extend(&newline_ids);
+        all_ids.extend(&newline_ids);
+        all_ids.extend(&encode_text(&tokenizer, "User: ")?);
+        all_ids.extend(&encode_text(&tokenizer, user_message)?);
+        all_ids.extend(&newline_ids);
+        all_ids.extend(&encode_text(&tokenizer, "Assistant: ")?);
+    } else {
+        if cfg.bos_token_id >= 0 {
+            all_ids.push(cfg.bos_token_id);
+        }
 
-    all_ids.push(cfg.role_start_id);
-    all_ids.extend(&encode_text(&tokenizer, "system")?);
-    if cfg.role_end_id >= 0 {
-        all_ids.push(cfg.role_end_id);
-    }
-    all_ids.extend(&newline_ids);
-    all_ids.extend(&encode_text(&tokenizer, system_prompt)?);
-    all_ids.push(cfg.turn_end_id);
-    all_ids.extend(&newline_ids);
+        all_ids.push(cfg.role_start_id);
+        all_ids.extend(&encode_text(&tokenizer, "system")?);
+        if cfg.role_end_id >= 0 {
+            all_ids.push(cfg.role_end_id);
+        }
+        all_ids.extend(&newline_ids);
+        all_ids.extend(&encode_text(&tokenizer, system_prompt)?);
+        all_ids.push(cfg.turn_end_id);
+        all_ids.extend(&newline_ids);
 
-    all_ids.push(cfg.role_start_id);
-    all_ids.extend(&encode_text(&tokenizer, "user")?);
-    if cfg.role_end_id >= 0 {
-        all_ids.push(cfg.role_end_id);
-    }
-    all_ids.extend(&newline_ids);
-    all_ids.extend(&encode_text(&tokenizer, user_message)?);
-    all_ids.push(cfg.turn_end_id);
-    all_ids.extend(&newline_ids);
+        all_ids.push(cfg.role_start_id);
+        all_ids.extend(&encode_text(&tokenizer, "user")?);
+        if cfg.role_end_id >= 0 {
+            all_ids.push(cfg.role_end_id);
+        }
+        all_ids.extend(&newline_ids);
+        all_ids.extend(&encode_text(&tokenizer, user_message)?);
+        all_ids.push(cfg.turn_end_id);
+        all_ids.extend(&newline_ids);
 
-    all_ids.push(cfg.role_start_id);
-    all_ids.extend(&encode_text(&tokenizer, "assistant")?);
-    if cfg.role_end_id >= 0 {
-        all_ids.push(cfg.role_end_id);
+        all_ids.push(cfg.role_start_id);
+        all_ids.extend(&encode_text(&tokenizer, "assistant")?);
+        if cfg.role_end_id >= 0 {
+            all_ids.push(cfg.role_end_id);
+        }
+        all_ids.extend(&newline_ids);
     }
-    all_ids.extend(&newline_ids);
 
     let mut kv_cache = KvCache::new(cfg.num_layers);
     let mut output_tokens = Vec::new();
