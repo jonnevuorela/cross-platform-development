@@ -130,6 +130,10 @@ class _ChatPageState extends State<ChatPage> {
           if (state.isStreaming && state.messages.isNotEmpty) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (!_scrollController.hasClients) return;
+              final position = _scrollController.position;
+              final atBottom =
+                  position.pixels >= position.maxScrollExtent - 150;
+              if (!atBottom) return;
               _scrollController.animateTo(
                 _scrollController.position.maxScrollExtent + 120,
                 duration: const Duration(milliseconds: 60),
