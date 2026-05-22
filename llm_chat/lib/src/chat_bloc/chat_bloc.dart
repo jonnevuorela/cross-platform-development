@@ -36,6 +36,9 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     on<ChatMessageReverted>(_onMessageReverted);
     on<ChatMessageDeleted>(_onMessageDeleted);
     on<ChatMessageRegenerateRequested>(_onMessageRegenerateRequested);
+    on<ChatChunkEvent>(_onChunkEvent);
+    on<ChatGenerationCompleteEvent>(_onGenerationComplete);
+    on<ChatGenerationErrorEvent>(_onGenerationError);
   }
 
   final ChatRepository _repository;
@@ -126,7 +129,9 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     _repository.cancelGeneration();
     _generationSubscription?.cancel();
     _generationSubscription = null;
-    emit(state.copyWith(isStreaming: false));
+    if (!isClosed) {
+      emit(state.copyWith(isStreaming: false));
+    }
   }
 
   Future<void> _onModelSwitchRequested(
@@ -172,42 +177,10 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         settings: state.settings,
       );
       _generationSubscription = stream.listen(
-        (chunk) {
-          final latest = List<ChatMessage>.from(state.messages);
-          if (latest.isEmpty) return;
-
-          final lastIndex = latest.length - 1;
-          final lastMessage = latest[lastIndex];
-          if (lastMessage.role != ChatRole.assistant) return;
-
-          latest[lastIndex] = lastMessage.copyWith(
-            content: '${lastMessage.content}${chunk.text}',
-          );
-
-          emit(state.copyWith(
-            messages: latest,
-            conversations: _updateActiveConversation(
-              messages: latest,
-              recap: state.recap,
-            ),
-          ));
-        },
-        onDone: () {
-          _generationSubscription = null;
-          if (!isClosed) {
-            emit(state.copyWith(isStreaming: false));
-            _maybeSummarize(emit);
-          }
-        },
-        onError: (error) {
-          _generationSubscription = null;
-          if (!isClosed) {
-            emit(state.copyWith(
-              isStreaming: false,
-              error: error.toString(),
-            ));
-          }
-        },
+        (chunk) => add(ChatChunkEvent(chunk: chunk)),
+        onDone: () => add(const ChatGenerationCompleteEvent()),
+        onError: (error) =>
+            add(ChatGenerationErrorEvent(error: error.toString())),
       );
     } catch (error) {
       emit(state.copyWith(
@@ -366,6 +339,54 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     );
 
     await _streamResponse(prompt: prompt, emit: emit);
+  }
+
+  void _onChunkEvent(
+    ChatChunkEvent event,
+    Emitter<ChatState> emit,
+  ) {
+    final latest = List<ChatMessage>.from(state.messages);
+    if (latest.isEmpty) return;
+
+    final lastIndex = latest.length - 1;
+    final lastMessage = latest[lastIndex];
+    if (lastMessage.role != ChatRole.assistant) return;
+
+    latest[lastIndex] = lastMessage.copyWith(
+      content: '${lastMessage.content}${event.chunk.text}',
+    );
+
+    emit(state.copyWith(
+      messages: latest,
+      conversations: _updateActiveConversation(
+        messages: latest,
+        recap: state.recap,
+      ),
+    ));
+  }
+
+  Future<void> _onGenerationComplete(
+    ChatGenerationCompleteEvent event,
+    Emitter<ChatState> emit,
+  ) async {
+    _generationSubscription = null;
+    if (!isClosed) {
+      emit(state.copyWith(isStreaming: false));
+      await _maybeSummarize(emit);
+    }
+  }
+
+  void _onGenerationError(
+    ChatGenerationErrorEvent event,
+    Emitter<ChatState> emit,
+  ) {
+    _generationSubscription = null;
+    if (!isClosed) {
+      emit(state.copyWith(
+        isStreaming: false,
+        error: event.error,
+      ));
+    }
   }
 
   void _onConversationRenamed(

@@ -1,5 +1,6 @@
 import 'package:equatable/equatable.dart';
 
+import '../models/chat_chunk.dart';
 import '../models/chat_conversation.dart';
 import '../models/chat_settings.dart';
 import '../models/model_info.dart';
@@ -164,4 +165,26 @@ class ChatMessageRegenerateRequested extends ChatEvent {
 
   @override
   List<Object?> get props => [messageIndex];
+}
+
+class ChatChunkEvent extends ChatEvent {
+  const ChatChunkEvent({required this.chunk});
+
+  final ChatChunk chunk;
+
+  @override
+  List<Object?> get props => [chunk];
+}
+
+class ChatGenerationCompleteEvent extends ChatEvent {
+  const ChatGenerationCompleteEvent();
+}
+
+class ChatGenerationErrorEvent extends ChatEvent {
+  const ChatGenerationErrorEvent({required this.error});
+
+  final String error;
+
+  @override
+  List<Object?> get props => [error];
 }
