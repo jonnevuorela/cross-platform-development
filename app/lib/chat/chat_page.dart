@@ -20,15 +20,24 @@ class _ChatPageState extends State<ChatPage> {
   final ChatStorage _storage = ChatStorage();
   ChatStorageData? _storageData;
   bool _didInit = false;
+  bool _userScrolledUp = false;
   String? _memorySummary;
 
   @override
   void initState() {
     super.initState();
+    _scrollController.addListener(_onScroll);
     _storage.load().then((data) {
       if (mounted) setState(() => _storageData = data);
     });
     _loadMemorySummary();
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    final atBottom = _scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 50;
+    _userScrolledUp = !atBottom;
   }
 
   Future<void> _loadMemorySummary() async {
@@ -67,6 +76,7 @@ class _ChatPageState extends State<ChatPage> {
   @override
   void dispose() {
     _controller.dispose();
+    _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     super.dispose();
   }
@@ -129,15 +139,9 @@ class _ChatPageState extends State<ChatPage> {
 
           if (state.isStreaming && state.messages.isNotEmpty) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (!_scrollController.hasClients) return;
-              final position = _scrollController.position;
-              final atBottom =
-                  position.pixels >= position.maxScrollExtent - 150;
-              if (!atBottom) return;
-              _scrollController.animateTo(
+              if (!_scrollController.hasClients || _userScrolledUp) return;
+              _scrollController.jumpTo(
                 _scrollController.position.maxScrollExtent + 120,
-                duration: const Duration(milliseconds: 60),
-                curve: Curves.easeOut,
               );
             });
           }
