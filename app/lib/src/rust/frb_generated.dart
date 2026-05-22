@@ -95,6 +95,13 @@ abstract class RustLibApi extends BaseApi {
   Future<void> crateApiSimpleInitModel({
     required String modelPath,
     required String tokenizerPath,
+    required PlatformInt64 numLayers,
+    required PlatformInt64 numKvHeads,
+    required PlatformInt64 headDim,
+    required PlatformInt64 vocabSize,
+    required PlatformInt64 eosTokenId,
+    required PlatformInt64 imStartId,
+    required PlatformInt64 imEndId,
   });
 }
 
@@ -234,6 +241,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   Future<void> crateApiSimpleInitModel({
     required String modelPath,
     required String tokenizerPath,
+    required PlatformInt64 numLayers,
+    required PlatformInt64 numKvHeads,
+    required PlatformInt64 headDim,
+    required PlatformInt64 vocabSize,
+    required PlatformInt64 eosTokenId,
+    required PlatformInt64 imStartId,
+    required PlatformInt64 imEndId,
   }) {
     return handler.executeNormal(
       NormalTask(
@@ -241,6 +255,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_String(modelPath, serializer);
           sse_encode_String(tokenizerPath, serializer);
+          sse_encode_i_64(numLayers, serializer);
+          sse_encode_i_64(numKvHeads, serializer);
+          sse_encode_i_64(headDim, serializer);
+          sse_encode_i_64(vocabSize, serializer);
+          sse_encode_i_64(eosTokenId, serializer);
+          sse_encode_i_64(imStartId, serializer);
+          sse_encode_i_64(imEndId, serializer);
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
@@ -253,7 +274,17 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           decodeErrorData: sse_decode_AnyhowException,
         ),
         constMeta: kCrateApiSimpleInitModelConstMeta,
-        argValues: [modelPath, tokenizerPath],
+        argValues: [
+          modelPath,
+          tokenizerPath,
+          numLayers,
+          numKvHeads,
+          headDim,
+          vocabSize,
+          eosTokenId,
+          imStartId,
+          imEndId,
+        ],
         apiImpl: this,
       ),
     );
@@ -261,7 +292,17 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   TaskConstMeta get kCrateApiSimpleInitModelConstMeta => const TaskConstMeta(
     debugName: "init_model",
-    argNames: ["modelPath", "tokenizerPath"],
+    argNames: [
+      "modelPath",
+      "tokenizerPath",
+      "numLayers",
+      "numKvHeads",
+      "headDim",
+      "vocabSize",
+      "eosTokenId",
+      "imStartId",
+      "imEndId",
+    ],
   );
 
   @protected
@@ -280,6 +321,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   String dco_decode_String(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as String;
+  }
+
+  @protected
+  PlatformInt64 dco_decode_i_64(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dcoDecodeI64(raw);
   }
 
   @protected
@@ -332,6 +379,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var inner = sse_decode_list_prim_u_8_strict(deserializer);
     return utf8.decoder.convert(inner);
+  }
+
+  @protected
+  PlatformInt64 sse_decode_i_64(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return deserializer.buffer.getPlatformInt64();
   }
 
   @protected
@@ -412,6 +465,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   void sse_encode_String(String self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_list_prim_u_8_strict(utf8.encoder.convert(self), serializer);
+  }
+
+  @protected
+  void sse_encode_i_64(PlatformInt64 self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    serializer.buffer.putPlatformInt64(self);
   }
 
   @protected

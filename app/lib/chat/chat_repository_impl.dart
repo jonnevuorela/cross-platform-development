@@ -14,7 +14,22 @@ class EchoChatRepository implements ChatRepository {
   @override
   Future<List<ModelInfo>> availableModels() async {
     return [
-      ModelInfo(id: '1', label: 'Mock Model', groupLabel: 'Mock', isSmart: true, path: '', tokenizerPath: '', index: 1),
+      ModelInfo(
+        id: '1',
+        label: 'Mock Model',
+        groupLabel: 'Mock',
+        isSmart: true,
+        path: '',
+        tokenizerPath: '',
+        index: 1,
+        numLayers: 30,
+        numKvHeads: 3,
+        headDim: 64,
+        vocabSize: 49152,
+        eosTokenId: 2,
+        imStartId: 1,
+        imEndId: 2,
+      ),
     ];
   }
 

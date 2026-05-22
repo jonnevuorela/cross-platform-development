@@ -6,8 +6,8 @@
 import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `build_inputs`, `extract_logits_and_kv`, `log_model_io`, `new`, `run_generate`, `seq_len`, `tensor_elem_type`
-// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `KvCache`
+// These functions are ignored because they are not marked as `pub`: `build_inputs`, `encode_text`, `extract_logits_and_kv`, `extract_tensor_flexible`, `log_model_io`, `new`, `remove_self_intro`, `run_generate`, `seq_len`, `strip_label_prefix`, `tensor_elem_type`
+// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `KvCache`, `ModelConfig`
 
 String greet({required String name}) =>
     RustLib.instance.api.crateApiSimpleGreet(name: name);
@@ -15,9 +15,23 @@ String greet({required String name}) =>
 Future<void> initModel({
   required String modelPath,
   required String tokenizerPath,
+  required PlatformInt64 numLayers,
+  required PlatformInt64 numKvHeads,
+  required PlatformInt64 headDim,
+  required PlatformInt64 vocabSize,
+  required PlatformInt64 eosTokenId,
+  required PlatformInt64 imStartId,
+  required PlatformInt64 imEndId,
 }) => RustLib.instance.api.crateApiSimpleInitModel(
   modelPath: modelPath,
   tokenizerPath: tokenizerPath,
+  numLayers: numLayers,
+  numKvHeads: numKvHeads,
+  headDim: headDim,
+  vocabSize: vocabSize,
+  eosTokenId: eosTokenId,
+  imStartId: imStartId,
+  imEndId: imEndId,
 );
 
 Future<List<String>> generate({

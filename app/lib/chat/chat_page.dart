@@ -136,23 +136,40 @@ class _ChatPageState extends State<ChatPage> {
           return Scaffold(
             drawer: _ChatDrawer(state: state),
             appBar: AppBar(
-              title: state.selectedModel != null
-                  ? Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Image.asset(
-                          state.selectedModel!.isSmart
-                              ? 'assets/media/images/big-brain-wojak.png'
-                              : 'assets/media/images/no-brain-dumb.png',
-                          width: 20,
-                          height: 20,
-                          fit: BoxFit.contain,
+              title: const Text('Chat Studio'),
+              bottom: state.selectedModel != null
+                  ? PreferredSize(
+                      preferredSize: const Size.fromHeight(28),
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 6, left: 16),
+                        child: Row(
+                          children: [
+                            Image.asset(
+                              state.selectedModel!.isSmart
+                                  ? 'assets/media/images/big-brain-wojak.png'
+                                  : 'assets/media/images/no-brain-dumb.png',
+                              width: 24,
+                              height: 24,
+                              fit: BoxFit.contain,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              state.selectedModel!.label,
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .labelSmall
+                                  ?.copyWith(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurface
+                                        .withOpacity(0.85),
+                                  ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 8),
-                        Text(state.selectedModel!.label),
-                      ],
+                      ),
                     )
-                  : const Text('Chat Studio'),
+                  : null,
               backgroundColor: Theme.of(context).colorScheme.background,
               foregroundColor: Theme.of(context).colorScheme.onBackground,
               actions: [
@@ -169,7 +186,9 @@ class _ChatPageState extends State<ChatPage> {
                 ),
               ],
             ),
-            body: Column(
+            body: GestureDetector(
+              onTap: () => FocusScope.of(context).unfocus(),
+              child: Column(
               children: [
                 if (state.isLoadingModel) const LinearProgressIndicator(),
                 if (_memorySummary != null)
@@ -294,6 +313,7 @@ class _ChatPageState extends State<ChatPage> {
                   ),
                 ),
               ],
+            ),
             ),
           );
         },

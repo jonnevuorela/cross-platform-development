@@ -79,7 +79,10 @@ flutter:
   # the material Icons class.
   uses-material-design: true
   assets:
-    - assets/models/onnx/SmolLM2-135M-Instruct/
+    - assets/models/SmolLM2-135M-Instruct/
+    - assets/models/SmolLM2-135M-Instruct/onnx/
+    - assets/models/Gemma3-1B/
+    - assets/models/Gemma3-1B/onnx/
     - assets/media/images/
 
   # To add assets to your application, add an assets section, like this:

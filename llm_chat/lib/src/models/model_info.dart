@@ -7,6 +7,13 @@ class ModelInfo {
     required this.path,
     required this.tokenizerPath,
     required this.index,
+    required this.numLayers,
+    required this.numKvHeads,
+    required this.headDim,
+    required this.vocabSize,
+    required this.eosTokenId,
+    required this.imStartId,
+    required this.imEndId,
   });
 
   final String id;
@@ -16,6 +23,13 @@ class ModelInfo {
   final String path;
   final String tokenizerPath;
   final int index;
+  final int numLayers;
+  final int numKvHeads;
+  final int headDim;
+  final int vocabSize;
+  final int eosTokenId;
+  final int imStartId;
+  final int imEndId;
 
   @override
   bool operator ==(Object other) {

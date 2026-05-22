@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/services.dart';
@@ -11,8 +12,7 @@ class RustChatRepository implements ChatRepository {
   Object? _initError;
 
   static const _modelsDirName = 'models';
-  static const _modelsAssetPrefix = 'assets/models/onnx/';
-  static const _cacheVersion = 4;
+  static const _modelsAssetPrefix = 'assets/models/';
 
   RustChatRepository();
 
@@ -25,13 +25,24 @@ class RustChatRepository implements ChatRepository {
     return modelsDir;
   }
 
+  Future<String> _computeCacheKey() async {
+    final manifest = await AssetManifest.loadFromAssetBundle(rootBundle);
+    final assets = manifest
+        .listAssets()
+        .where((a) => a.startsWith(_modelsAssetPrefix))
+        .toList()
+      ..sort();
+    return assets.join('|');
+  }
+
   Future<void> _ensureBundledModels() async {
     final dir = await _modelsDir();
 
-    final versionFile = File('${dir.path}/.cache_version');
-    final cachedVersion = await _readCacheVersion(versionFile);
-    print('[LLM] cache version: cached=$cachedVersion, expected=$_cacheVersion');
-    if (cachedVersion == _cacheVersion) {
+    final cacheKeyFile = File('${dir.path}/.cache_key');
+    final expectedKey = await _computeCacheKey();
+    final cachedKey = await _readCacheKey(cacheKeyFile);
+    print('[LLM] cache key: cached="${cachedKey?.substring(0, 40)}…" expected="${expectedKey.substring(0, 40)}…"');
+    if (cachedKey == expectedKey) {
       return;
     }
 
@@ -52,11 +63,6 @@ class RustChatRepository implements ChatRepository {
       for (final a in modelAssets.take(5)) {
         print('  $a');
       }
-    } else if (allAssets.isNotEmpty) {
-      print('[LLM] no model assets found. sample other assets:');
-      for (final a in allAssets.take(5)) {
-        print('  $a');
-      }
     }
 
     for (final asset in modelAssets) {
@@ -68,23 +74,21 @@ class RustChatRepository implements ChatRepository {
       await _copyAssetToFile(asset, destFile);
     }
 
-    // verify
     final copied = await dir.list().toList();
     print('[LLM] files in models dir after copy: ${copied.length}');
     for (final e in copied) {
       print('  ${e is Directory ? "[DIR]" : "[FILE]"} ${e.path.split('/').last}');
     }
 
-    await versionFile.writeAsString('$_cacheVersion', flush: true);
-    print('[LLM] cache version written to $_cacheVersion');
+    await cacheKeyFile.writeAsString(expectedKey, flush: true);
+    print('[LLM] cache key written');
   }
 
-  Future<int> _readCacheVersion(File file) async {
+  Future<String?> _readCacheKey(File file) async {
     try {
-      final content = await file.readAsString();
-      return int.parse(content.trim());
+      return await file.readAsString();
     } catch (_) {
-      return -1;
+      return null;
     }
   }
 
@@ -115,6 +119,40 @@ class RustChatRepository implements ChatRepository {
     return base.toUpperCase();
   }
 
+  Future<Map<String, dynamic>?> _readJsonFile(String path) async {
+    try {
+      final file = File(path);
+      final content = await file.readAsString();
+      return jsonDecode(content) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  int _findImStartId(Map<String, dynamic> tokCfg) {
+    final decoder = tokCfg['added_tokens_decoder'] as Map<String, dynamic>?;
+    if (decoder == null) return 1;
+    for (final entry in decoder.entries) {
+      final token = entry.value as Map<String, dynamic>?;
+      if (token != null && token['content'] == '<|im_start|>') {
+        return int.parse(entry.key);
+      }
+    }
+    return 1;
+  }
+
+  int _findImEndId(Map<String, dynamic> tokCfg) {
+    final decoder = tokCfg['added_tokens_decoder'] as Map<String, dynamic>?;
+    if (decoder == null) return 2;
+    for (final entry in decoder.entries) {
+      final token = entry.value as Map<String, dynamic>?;
+      if (token != null && token['content'] == '<|im_end|>') {
+        return int.parse(entry.key);
+      }
+    }
+    return 2;
+  }
+
   @override
   Future<void> loadModel({required ModelInfo model}) async {
     _isModelReady = false;
@@ -123,6 +161,13 @@ class RustChatRepository implements ChatRepository {
     await rust_api.initModel(
       modelPath: model.path,
       tokenizerPath: model.tokenizerPath,
+      numLayers: model.numLayers,
+      numKvHeads: model.numKvHeads,
+      headDim: model.headDim,
+      vocabSize: model.vocabSize,
+      eosTokenId: model.eosTokenId,
+      imStartId: model.imStartId,
+      imEndId: model.imEndId,
     );
     _isModelReady = true;
   }
@@ -163,20 +208,53 @@ class RustChatRepository implements ChatRepository {
       final modelLabel = _labelFromDirName(dirName);
       print('[LLM] scanning dir "$dirName" (label="$modelLabel")');
 
-      final files = await modelDir.list().toList();
-      final onnxFiles = files
+      // Read HF configs
+      final config = await _readJsonFile('${modelDir.path}/config.json');
+      final genConfig = await _readJsonFile('${modelDir.path}/generation_config.json');
+      final tokConfig = await _readJsonFile('${modelDir.path}/tokenizer_config.json');
+
+      // Architecture params
+      final numLayers = config?['num_hidden_layers'] as int? ?? 30;
+      final numKvHeads = config?['num_key_value_heads'] as int? ?? 3;
+      final hiddenSize = config?['hidden_size'] as int?;
+      final numAttnHeads = config?['num_attention_heads'] as int?;
+      final headDim = config?['head_dim'] as int?
+          ?? (hiddenSize != null && numAttnHeads != null ? hiddenSize ~/ numAttnHeads : 64);
+      final vocabSize = config?['vocab_size'] as int? ?? 49152;
+
+      // Token IDs
+      final genEos = genConfig?['eos_token_id'];
+      final eosTokenId = genEos is List ? genEos.first as int : (genEos as int?);
+      final cfgEos = config?['eos_token_id'];
+      final resolvedEos = eosTokenId ?? (cfgEos is List ? cfgEos.first as int : (cfgEos as int?)) ?? 2;
+
+      final imStartId = tokConfig != null ? _findImStartId(tokConfig) : 1;
+      final imEndId = tokConfig != null ? _findImEndId(tokConfig) : 2;
+
+      print('[LLM]   arch: layers=$numLayers kv=$numKvHeads head=$headDim vocab=$vocabSize');
+      print('[LLM]   tokens: eos=$resolvedEos im_start=$imStartId im_end=$imEndId');
+
+      // Discover variants from onnx/ subdirectory
+      final onnxDir = Directory('${modelDir.path}/onnx');
+      List<FileSystemEntity> onnxFiles;
+      if (await onnxDir.exists()) {
+        onnxFiles = await onnxDir.list().toList();
+      } else {
+        onnxFiles = [];
+      }
+      final variantFiles = onnxFiles
           .whereType<File>()
           .where((f) => f.path.endsWith('.onnx'))
           .toList()
         ..sort((a, b) => a.path.compareTo(b.path));
-      print('[LLM]   ${onnxFiles.length} .onnx files found');
+      print('[LLM]   ${variantFiles.length} .onnx files found in onnx/');
 
       final tokenizerFile = '${modelDir.path}/tokenizer.json';
       final tokenizerExists = await File(tokenizerFile).exists();
       print('[LLM]   tokenizer: $tokenizerFile exists=$tokenizerExists');
 
-      final half = (onnxFiles.length + 1) ~/ 2;
-      for (final f in onnxFiles) {
+      final half = (variantFiles.length + 1) ~/ 2;
+      for (final f in variantFiles) {
         final variant = _variantLabel(f.path.split('/').last);
         final isSmart = index < half;
         index += 1;
@@ -189,6 +267,13 @@ class RustChatRepository implements ChatRepository {
           path: f.path,
           tokenizerPath: tokenizerFile,
           index: index,
+          numLayers: numLayers,
+          numKvHeads: numKvHeads,
+          headDim: headDim,
+          vocabSize: vocabSize,
+          eosTokenId: resolvedEos,
+          imStartId: imStartId,
+          imEndId: imEndId,
         ));
       }
     }

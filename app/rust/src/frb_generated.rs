@@ -214,12 +214,28 @@ fn wire__crate__api__simple__init_model_impl(
                 flutter_rust_bridge::for_generated::SseDeserializer::new(message);
             let api_model_path = <String>::sse_decode(&mut deserializer);
             let api_tokenizer_path = <String>::sse_decode(&mut deserializer);
+            let api_num_layers = <i64>::sse_decode(&mut deserializer);
+            let api_num_kv_heads = <i64>::sse_decode(&mut deserializer);
+            let api_head_dim = <i64>::sse_decode(&mut deserializer);
+            let api_vocab_size = <i64>::sse_decode(&mut deserializer);
+            let api_eos_token_id = <i64>::sse_decode(&mut deserializer);
+            let api_im_start_id = <i64>::sse_decode(&mut deserializer);
+            let api_im_end_id = <i64>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| {
                 transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
                     (move || {
-                        let output_ok =
-                            crate::api::simple::init_model(api_model_path, api_tokenizer_path)?;
+                        let output_ok = crate::api::simple::init_model(
+                            api_model_path,
+                            api_tokenizer_path,
+                            api_num_layers,
+                            api_num_kv_heads,
+                            api_head_dim,
+                            api_vocab_size,
+                            api_eos_token_id,
+                            api_im_start_id,
+                            api_im_end_id,
+                        )?;
                         Ok(output_ok)
                     })(),
                 )
@@ -251,6 +267,13 @@ impl SseDecode for String {
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         let mut inner = <Vec<u8>>::sse_decode(deserializer);
         return String::from_utf8(inner).unwrap();
+    }
+}
+
+impl SseDecode for i64 {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        deserializer.cursor.read_i64::<NativeEndian>().unwrap()
     }
 }
 
@@ -361,6 +384,13 @@ impl SseEncode for String {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         <Vec<u8>>::sse_encode(self.into_bytes(), serializer);
+    }
+}
+
+impl SseEncode for i64 {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        serializer.cursor.write_i64::<NativeEndian>(self).unwrap();
     }
 }
 

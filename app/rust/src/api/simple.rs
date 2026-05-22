@@ -8,9 +8,15 @@ use ort::{
 };
 use tokenizers::Tokenizer;
 
-const NUM_LAYERS: usize = 30;
-const NUM_KV_HEADS: i64 = 3;
-const HEAD_DIM: i64 = 64;
+struct ModelConfig {
+    num_layers: usize,
+    num_kv_heads: i64,
+    head_dim: i64,
+    vocab_size: i64,
+    eos_token_id: i64,
+    im_start_id: i64,
+    im_end_id: i64,
+}
 
 struct KvCache {
     keys: Vec<Vec<f32>>,
@@ -18,21 +24,23 @@ struct KvCache {
 }
 
 impl KvCache {
-    fn new() -> Self {
+    fn new(num_layers: usize) -> Self {
         Self {
-            keys: vec![vec![]; NUM_LAYERS],
-            values: vec![vec![]; NUM_LAYERS],
+            keys: vec![vec![]; num_layers],
+            values: vec![vec![]; num_layers],
         }
     }
 
-    fn seq_len(&self) -> i64 {
+    fn seq_len(&self, cfg: &ModelConfig) -> i64 {
         if self.keys[0].is_empty() {
             0
         } else {
-            self.keys[0].len() as i64 / (NUM_KV_HEADS * HEAD_DIM)
+            self.keys[0].len() as i64 / (cfg.num_kv_heads * cfg.head_dim)
         }
     }
 }
+
+const REPETITION_PENALTY: f32 = 1.15;
 
 #[flutter_rust_bridge::frb(sync)]
 pub fn greet(name: String) -> String {
@@ -46,10 +54,21 @@ pub fn init_app() {
 
 static SESSION: std::sync::Mutex<Option<Session>> = std::sync::Mutex::new(None);
 static TOKENIZER: OnceCell<Tokenizer> = OnceCell::new();
+static CONFIG: OnceCell<ModelConfig> = OnceCell::new();
 
-pub fn init_model(model_path: String, tokenizer_path: String) -> Result<(), Error> {
+pub fn init_model(
+    model_path: String,
+    tokenizer_path: String,
+    num_layers: i64,
+    num_kv_heads: i64,
+    head_dim: i64,
+    vocab_size: i64,
+    eos_token_id: i64,
+    im_start_id: i64,
+    im_end_id: i64,
+) -> Result<(), Error> {
     let result = (|| {
-        let tokenizer = Tokenizer::from_file(tokenizer_path)
+        let tokenizer = Tokenizer::from_file(&tokenizer_path)
             .map_err(|e| Error::new(format!("Tokenizer error: {e}")))?;
 
         let path = std::path::Path::new(&model_path);
@@ -68,9 +87,7 @@ pub fn init_model(model_path: String, tokenizer_path: String) -> Result<(), Erro
             data_meta as f64 / 1_048_576.0,
         );
 
-        ort::init()
-            .with_name("smollm")
-            .commit();
+        ort::init().with_name("app").commit();
 
         let session = Session::builder()?
             .with_optimization_level(GraphOptimizationLevel::Level1)?
@@ -78,11 +95,22 @@ pub fn init_model(model_path: String, tokenizer_path: String) -> Result<(), Erro
             .with_inter_threads(1)?
             .with_memory_pattern(false)?
             .with_prepacking(false)?
-            .commit_from_file(model_path)?;
+            .commit_from_file(&model_path)?;
 
         log_model_io(&session);
 
+        let cfg = ModelConfig {
+            num_layers: num_layers as usize,
+            num_kv_heads,
+            head_dim,
+            vocab_size,
+            eos_token_id,
+            im_start_id,
+            im_end_id,
+        };
+
         let _ = TOKENIZER.set(tokenizer);
+        let _ = CONFIG.set(cfg);
         *SESSION.lock().map_err(|e| Error::new(format!("Session lock: {e}")))? = Some(session);
         Ok(())
     })();
@@ -117,10 +145,6 @@ pub fn generate_stream(
         }
     }
 }
-
-const IM_START: i64 = 1;
-const IM_END: i64 = 2;
-const EOS_ID: i64 = 0;
 
 fn encode_text(tokenizer: &Tokenizer, text: &str) -> Result<Vec<i64>, Error> {
     let enc = tokenizer
@@ -186,6 +210,7 @@ fn remove_self_intro(text: &str) -> Option<String> {
 
 fn run_generate(prompt: &str, max_tokens: u32, sink: Option<&StreamSink<String>>) -> Result<Vec<String>, Error> {
     let tokenizer = TOKENIZER.get().ok_or_else(|| Error::new("Tokenizer not initialized"))?;
+    let cfg = CONFIG.get().ok_or_else(|| Error::new("Config not initialized"))?;
     let newline_ids = encode_text(tokenizer, "\n")?;
 
     let system_prompt = "You are a helpful assistant. Answer concisely and stop when done.";
@@ -197,31 +222,27 @@ fn run_generate(prompt: &str, max_tokens: u32, sink: Option<&StreamSink<String>>
 
     let mut all_ids = Vec::new();
 
-    // System message
-    all_ids.push(IM_START);
+    all_ids.push(cfg.im_start_id);
     all_ids.extend(&encode_text(tokenizer, "system")?);
     all_ids.extend(&newline_ids);
     all_ids.extend(&encode_text(tokenizer, system_prompt)?);
-    all_ids.push(IM_END);
+    all_ids.push(cfg.im_end_id);
     all_ids.extend(&newline_ids);
 
-    // User message
-    all_ids.push(IM_START);
+    all_ids.push(cfg.im_start_id);
     all_ids.extend(&encode_text(tokenizer, "user")?);
     all_ids.extend(&newline_ids);
     all_ids.extend(&encode_text(tokenizer, user_message)?);
-    all_ids.push(IM_END);
+    all_ids.push(cfg.im_end_id);
     all_ids.extend(&newline_ids);
 
-    // Assistant prompt
-    all_ids.push(IM_START);
+    all_ids.push(cfg.im_start_id);
     all_ids.extend(&encode_text(tokenizer, "assistant")?);
     all_ids.extend(&newline_ids);
 
-    let mut kv_cache = KvCache::new();
+    let mut kv_cache = KvCache::new(cfg.num_layers);
     let mut output_tokens = Vec::new();
     let max_steps = max_tokens as usize;
-    const REPETITION_PENALTY: f32 = 1.15;
 
     let mut prefix_buf = String::new();
     let mut prefix_resolved = false;
@@ -231,7 +252,7 @@ fn run_generate(prompt: &str, max_tokens: u32, sink: Option<&StreamSink<String>>
             (all_ids.clone(), 0i64)
         } else {
             let last = vec![all_ids[all_ids.len() - 1]];
-            (last, kv_cache.seq_len())
+            (last, kv_cache.seq_len(cfg))
         };
 
         let kv_seq_len = past_seq_len.max(1);
@@ -248,26 +269,26 @@ fn run_generate(prompt: &str, max_tokens: u32, sink: Option<&StreamSink<String>>
                 .iter()
                 .map(|input| (input.name().to_string(), input.dtype().clone()))
                 .collect();
-            let inputs = build_inputs(&input_specs, &input_ids, &kv_cache, kv_seq_len)?;
+            let inputs = build_inputs(&input_specs, cfg, &input_ids, &kv_cache, kv_seq_len)?;
             let outputs = Session::run(session, inputs)?;
-            let (data, new_len) = extract_logits_and_kv(outputs.iter(), &mut kv_cache)?;
+            let (data, new_len) = extract_logits_and_kv(outputs.iter(), &mut kv_cache, cfg)?;
             (data, new_len)
         };
 
         let seq_len_for_logits = new_seq_len;
 
-        let vocab_size = 49152;
-        let total_logits = seq_len_for_logits * vocab_size;
+        let total_logits = seq_len_for_logits * cfg.vocab_size as usize;
         if logits.len() < total_logits {
             break;
         }
-        let start = (seq_len_for_logits - 1) * vocab_size;
-        let slice = &logits[start..start + vocab_size];
+        let start = (seq_len_for_logits - 1) * cfg.vocab_size as usize;
+        let end = start + cfg.vocab_size as usize;
+        let slice = &logits[start..end.min(logits.len())];
 
         let mut logits_vec: Vec<(usize, f32)> = slice.iter().copied().enumerate().collect();
         let local_ids = &all_ids[all_ids.len().saturating_sub(50)..];
         for (idx, val) in logits_vec.iter_mut() {
-            if *idx >= 49152 {
+            if *idx as i64 >= cfg.vocab_size {
                 continue;
             }
             if local_ids.contains(&(*idx as i64)) {
@@ -276,7 +297,7 @@ fn run_generate(prompt: &str, max_tokens: u32, sink: Option<&StreamSink<String>>
         }
         logits_vec.sort_unstable_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
         let token_id = logits_vec[0].0;
-        if token_id as i64 == IM_END || token_id as i64 == EOS_ID {
+        if token_id as i64 == cfg.im_end_id || token_id as i64 == cfg.eos_token_id {
             break;
         }
         all_ids.push(token_id as i64);
@@ -336,6 +357,7 @@ fn run_generate(prompt: &str, max_tokens: u32, sink: Option<&StreamSink<String>>
 
 fn build_inputs(
     input_specs: &[(String, ValueType)],
+    cfg: &ModelConfig,
     input_ids: &[i64],
     kv_cache: &KvCache,
     kv_seq_len: i64,
@@ -373,7 +395,7 @@ fn build_inputs(
                     .map_err(|_| Error::new(format!("Invalid layer in {name}")))?;
                 let is_key = parts[2] == "key";
 
-                let shape = vec![1i64, NUM_KV_HEADS, kv_seq_len, HEAD_DIM];
+                let shape = vec![1i64, cfg.num_kv_heads, kv_seq_len, cfg.head_dim];
                 let numel = shape.iter().map(|d| *d as usize).product::<usize>();
 
                 if kv_seq_len > 0 && !kv_cache.keys[layer].is_empty() {
@@ -423,6 +445,7 @@ fn extract_tensor_flexible(val: &ort::value::ValueRef) -> Result<(Vec<i64>, Vec<
 fn extract_logits_and_kv<'a>(
     outputs: impl Iterator<Item = (&'a str, ort::value::ValueRef<'a>)>,
     kv_cache: &mut KvCache,
+    cfg: &ModelConfig,
 ) -> Result<(Vec<f32>, usize), Error> {
     let collected: Vec<(&str, ort::value::ValueRef<'_>)> = outputs.collect();
 
@@ -444,7 +467,7 @@ fn extract_logits_and_kv<'a>(
             let parts: Vec<&str> = name.split('.').collect();
             if parts.len() >= 3 {
                 if let Ok(layer) = parts[1].parse::<usize>() {
-                    if layer < NUM_LAYERS {
+                    if layer < cfg.num_layers {
                         if parts[2] == "key" {
                             kv_cache.keys[layer] = data.to_vec();
                         } else if parts[2] == "value" {
@@ -465,7 +488,7 @@ fn extract_logits_and_kv<'a>(
     let sequence_length = if shape.len() >= 2 {
         shape[1] as usize
     } else {
-        data.len() / 128256
+        data.len() / cfg.vocab_size as usize
     };
 
     Ok((data.to_vec(), sequence_length))
