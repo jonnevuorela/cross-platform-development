@@ -389,10 +389,12 @@ class RustChatRepository implements ChatRepository {
   Future<List<ModelInfo>> availableModels() async {
     await _ensureBundledModels();
     final dir = await _modelsDir();
+    final bundleDir = _bundleModelsDir();
 
-    // Collect model directories from support dir (bundle models are copied here by _ensureBundledModels)
+    // Collect model directories
     final modelDirs = <Directory>[];
     {
+      // Start with support dir entries
       final entries = await dir.list().toList();
       print('[LLM] availableModels: ${entries.length} entries in ${dir.path}');
       for (final e in entries) {
@@ -401,6 +403,19 @@ class RustChatRepository implements ChatRepository {
           modelDirs.add(e);
         } else {
           print('  [FILE] ${e.path.split('/').last}');
+        }
+      }
+    }
+
+    // Scan bundle directory — bundle entries take priority for discovery (they always have .onnx)
+    if (bundleDir != null) {
+      final bundleEntries = await Directory(bundleDir).list().toList();
+      for (final e in bundleEntries) {
+        if (e is Directory) {
+          final name = e.path.split('/').last;
+          modelDirs.removeWhere((d) => d.path.split('/').last == name);
+          modelDirs.insert(0, e);
+          print('[LLM]   bundle model: $name');
         }
       }
     }
@@ -458,8 +473,20 @@ class RustChatRepository implements ChatRepository {
 
       final (variantFiles, tokenizerFile) = await _resolveOnnxVariants(modelDir);
 
-      final half = (variantFiles.length + 1) ~/ 2;
-      for (final f in variantFiles) {
+      // Map bundle paths to support dir paths so ORT loads from regular filesystem (not iOS framework)
+      List<File> resolvedVariants;
+      String resolvedTokenizer;
+      if (bundleDir != null && modelDir.path.startsWith(bundleDir)) {
+        resolvedVariants = variantFiles.map((f) =>
+          File(f.path.replaceFirst(bundleDir, '${dir.path}/'))).toList();
+        resolvedTokenizer = tokenizerFile.replaceFirst(bundleDir, '${dir.path}/');
+      } else {
+        resolvedVariants = variantFiles;
+        resolvedTokenizer = tokenizerFile;
+      }
+
+      final half = (resolvedVariants.length + 1) ~/ 2;
+      for (final f in resolvedVariants) {
         final variant = _variantLabel(f.path.split('/').last);
         final isSmart = index < half;
         index += 1;
@@ -471,7 +498,7 @@ class RustChatRepository implements ChatRepository {
           groupLabel: modelLabel,
           isSmart: isSmart,
           path: f.path,
-          tokenizerPath: tokenizerFile,
+          tokenizerPath: resolvedTokenizer,
           index: index,
           numLayers: numLayers,
           numKvHeads: numKvHeads,
