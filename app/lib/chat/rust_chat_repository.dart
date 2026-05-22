@@ -33,8 +33,18 @@ class RustChatRepository implements ChatRepository {
     try {
       final execPath = Platform.resolvedExecutable;
       final appDir = File(execPath).parent.path;
-      final path = '$appDir/Frameworks/App.framework/flutter_assets';
-      if (Directory(path).existsSync()) return path;
+      final candidates = [
+        '$appDir/Frameworks/App.framework/flutter_assets',
+        '$appDir/Frameworks/Flutter.framework/flutter_assets',
+        '$appDir/flutter_assets',
+      ];
+      for (final path in candidates) {
+        print('[LLM] probing bundle path: $path');
+        if (File('$path/AssetManifest.bin').existsSync()) {
+          print('[LLM] bundle assets root found: $path');
+          return path;
+        }
+      }
     } catch (_) {}
     return null;
   }
@@ -99,12 +109,15 @@ class RustChatRepository implements ChatRepository {
 
       // On iOS, model binaries are used directly from the app bundle
       if (hasBundle && (relativePath.endsWith('.onnx') || relativePath.endsWith('.onnx_data'))) {
+        print('[LLM]   skip (bundle): $relativePath');
         continue;
       }
 
+      print('[LLM]   copy: $relativePath (${asset.length})');
       final destFile = File('${dir.path}/$relativePath');
       await destFile.parent.create(recursive: true);
       await _copyAssetToFile(asset, destFile);
+      print('[LLM]   done: $relativePath');
     }
 
     final copied = await dir.list().toList();
@@ -126,6 +139,25 @@ class RustChatRepository implements ChatRepository {
   }
 
   Future<void> _copyAssetToFile(String assetPath, File destination) async {
+    // On desktop, assets are real files on disk — direct copy avoids OOM
+    if (Platform.isLinux || Platform.isMacOS || Platform.isWindows) {
+      try {
+        final execPath = Platform.resolvedExecutable;
+        final appDir = File(execPath).parent.path;
+        for (final bundleDir in [
+          '$appDir/data/flutter_assets',
+          '$appDir/flutter_assets',
+        ]) {
+          final src = File('$bundleDir/$assetPath');
+          if (await src.exists()) {
+            await src.copy(destination.path);
+            print('[LLM]   direct copy: $assetPath');
+            return;
+          }
+        }
+      } catch (_) {}
+    }
+    // Android fallback: load into RAM (unavoidable without platform channel)
     final data = await rootBundle.load(assetPath);
     await destination.writeAsBytes(data.buffer.asUint8List(), flush: true);
   }
@@ -186,11 +218,12 @@ class RustChatRepository implements ChatRepository {
 
   /// Detects which chat template tokens the model uses by examining
   /// [chat_template.jinja] (most authoritative) then falling back to
-  /// [added_tokens_decoder] heuristics.
+  /// [added_tokens_decoder] heuristics and finally [modelType].
   /// Returns (roleStartId, roleEndId, turnEndId).
   (int, int, int) _detectTemplateTokens(
     Map<String, dynamic>? tokCfg,
     String? modelDirPath,
+    String? modelType,
   ) {
     // 1) Try chat_template.jinja (most authoritative)
     if (modelDirPath != null) {
@@ -236,7 +269,28 @@ class RustChatRepository implements ChatRepository {
       }
     }
 
-    // 3) Default: no format detected — plain mode (no special tokens)
+    // 3) Fallback: use model_type from config.json
+    if (modelType != null) {
+      // Gemma: <start_of_turn>user\n...<end_of_turn>
+      if (modelType.startsWith('gemma')) {
+        final startOfTurn = _findTokenId(tokCfg, '<start_of_turn>', -1);
+        final endOfTurn = _findTokenId(tokCfg, '<end_of_turn>', -1);
+        if (startOfTurn >= 0 && endOfTurn >= 0) {
+          return (startOfTurn, -1, endOfTurn);
+        }
+      }
+      // Qwen: ChatML format <|im_start|>/<|im_end|>
+      if (modelType.startsWith('qwen')) {
+        final imStart = _findTokenId(tokCfg, '<|im_start|>', -1);
+        final imEnd = _findTokenId(tokCfg, '<|im_end|>', -1);
+        if (imStart >= 0 && imEnd >= 0) {
+          return (imStart, -1, imEnd);
+        }
+      }
+      // gpt2 → plain mode (handled below)
+    }
+
+    // 4) Default: no format detected — plain mode (no special tokens)
     return (-1, -1, -1);
   }
 
@@ -333,6 +387,8 @@ class RustChatRepository implements ChatRepository {
       final genConfig = onnxGenConfig ?? rootGenConfig;
       final tokConfig = onnxTokConfig ?? rootTokConfig;
 
+      final modelType = config?['model_type'] as String?;
+
       // Support both HuggingFace names and GPT-2 style names
       final numLayers = _intVal(config, ['num_hidden_layers', 'n_layer'], 30);
       final numAttnHeads = _intVal(config, ['num_attention_heads', 'n_head'], 12);
@@ -353,6 +409,7 @@ class RustChatRepository implements ChatRepository {
       final (roleStartId, roleEndId, turnEndId) = _detectTemplateTokens(
         tokConfig,
         modelDir.path,
+        modelType,
       );
 
       print('[LLM]   arch: layers=$numLayers kv=$numKvHeads($numAttnHeads) head=$headDim hidden=$hiddenSize vocab=$vocabSize');
