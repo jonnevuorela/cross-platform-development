@@ -118,6 +118,8 @@ pub fn init_model(
             data_path.display(),
             data_meta as f64 / 1_048_576.0,
         );
+        eprintln!("[LLM] model_path arg: {model_path}");
+        eprintln!("[LLM] data_path computed: {}", data_path.display());
 
         ort::init().with_name("app").commit();
 

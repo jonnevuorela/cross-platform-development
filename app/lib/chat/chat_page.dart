@@ -21,6 +21,7 @@ class _ChatPageState extends State<ChatPage> {
   ChatStorageData? _storageData;
   bool _didInit = false;
   bool _userScrolledUp = false;
+  DateTime? _lastScrollTime;
   String? _memorySummary;
 
   @override
@@ -140,8 +141,15 @@ class _ChatPageState extends State<ChatPage> {
           if (state.isStreaming && state.messages.isNotEmpty) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (!_scrollController.hasClients || _userScrolledUp) return;
-              _scrollController.jumpTo(
-                _scrollController.position.maxScrollExtent + 120,
+              final now = DateTime.now();
+              if (_lastScrollTime != null &&
+                  now.difference(_lastScrollTime!) <
+                      const Duration(milliseconds: 150)) return;
+              _lastScrollTime = now;
+              _scrollController.animateTo(
+                _scrollController.position.maxScrollExtent,
+                duration: const Duration(milliseconds: 80),
+                curve: Curves.easeOut,
               );
             });
           }
@@ -410,12 +418,13 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   void _send(BuildContext context) {
+    FocusScope.of(context).unfocus();
     final text = _controller.text.trim();
     if (text.isEmpty) return;
     context.read<ChatBloc>().add(ChatMessageSent(content: text));
     _controller.clear();
     _scrollController.animateTo(
-      _scrollController.position.maxScrollExtent + 120,
+      _scrollController.position.maxScrollExtent,
       duration: const Duration(milliseconds: 250),
       curve: Curves.easeOut,
     );
