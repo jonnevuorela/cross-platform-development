@@ -151,7 +151,7 @@ class _ChatPageState extends State<ChatPage> {
           return Scaffold(
             drawer: _ChatDrawer(state: state),
             appBar: AppBar(
-              title: const Text('Chat Studio'),
+              title: const Text('Chat'),
               bottom: state.selectedModel != null
                   ? PreferredSize(
                       preferredSize: const Size.fromHeight(28),
