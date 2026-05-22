@@ -25,38 +25,52 @@ class RustChatRepository implements ChatRepository {
     return modelsDir;
   }
 
-  /// On iOS, returns the filesystem path to flutter_assets/ inside the app bundle.
+  /// Returns the filesystem path to flutter_assets/ inside the app bundle.
   /// Model files at this path are real files — ONNX Runtime loads them directly.
-  /// Returns null on other platforms (assets must be copied to support dir).
+  /// Returns null when bundle path can't be found (assets must be copied to support dir).
   String? _bundleAssetsRoot() {
-    if (!Platform.isIOS) return null;
+    print('[LLM] _bundleAssetsRoot called: isIOS=${Platform.isIOS} isMacOS=${Platform.isMacOS} executable=${Platform.resolvedExecutable}');
+    if (!Platform.isIOS && !Platform.isMacOS) return null;
     try {
       final appDir = File(Platform.resolvedExecutable).parent.path;
-      for (final path in [
+
+      // Probe known paths (ordered by likelihood)
+      final candidates = <String>[
+        // iOS / Mac Catalyst
         '$appDir/Frameworks/App.framework/flutter_assets',
         '$appDir/Frameworks/Flutter.framework/flutter_assets',
         '$appDir/flutter_assets',
-      ]) {
+        // macOS desktop
+        '$appDir/../Frameworks/App.framework/Resources/flutter_assets',
+        '$appDir/../Resources/flutter_assets',
+      ];
+
+      for (final path in candidates) {
         print('[LLM] probing bundle path: $path');
         if (File('$path/AssetManifest.bin').existsSync()) {
           print('[LLM] bundle assets root found: $path');
           return path;
         }
       }
+
       // Fallback: scan every .framework for flutter_assets
       final frameworksDir = Directory('$appDir/Frameworks');
       if (frameworksDir.existsSync()) {
         for (final entry in frameworksDir.listSync()) {
           if (entry is Directory && entry.path.endsWith('.framework')) {
-            final fa = '${entry.path}/flutter_assets';
-            if (File('$fa/AssetManifest.bin').existsSync()) {
-              print('[LLM] bundle assets root found (fallback): $fa');
-              return fa;
+            for (final suffix in ['/flutter_assets', '/Resources/flutter_assets']) {
+              final fa = '${entry.path}$suffix';
+              if (File('$fa/AssetManifest.bin').existsSync()) {
+                print('[LLM] bundle assets root found (fallback): $fa');
+                return fa;
+              }
             }
           }
         }
       }
-    } catch (_) {}
+    } catch (e) {
+      print('[LLM] _bundleAssetsRoot error: $e');
+    }
     return null;
   }
 
@@ -74,6 +88,8 @@ class RustChatRepository implements ChatRepository {
     final assets = manifest
         .listAssets()
         .where((a) => a.startsWith(_modelsAssetPrefix))
+        // Exclude hidden files (like .DS_Store) that macOS creates non-deterministically
+        .where((a) => !a.split('/').any((p) => p.startsWith('.')))
         .where((a) => bundleDir != null
             ? !a.endsWith('.onnx') && !a.endsWith('.onnx_data')
             : true)
@@ -118,7 +134,13 @@ class RustChatRepository implements ChatRepository {
       final relativePath = asset.substring(_modelsAssetPrefix.length);
       if (relativePath.isEmpty) continue;
 
-      // On iOS, model binaries are used directly from the app bundle
+      // Skip hidden files (like .DS_Store) that macOS creates non-deterministically
+      if (relativePath.split('/').any((p) => p.startsWith('.'))) {
+        print('[LLM]   skip (hidden): $relativePath');
+        continue;
+      }
+
+      // On iOS/macOS, model binaries are used directly from the app bundle
       if (hasBundle && (relativePath.endsWith('.onnx') || relativePath.endsWith('.onnx_data'))) {
         print('[LLM]   skip (bundle): $relativePath');
         continue;
@@ -127,8 +149,12 @@ class RustChatRepository implements ChatRepository {
       print('[LLM]   copy: $relativePath');
       final destFile = File('${dir.path}/$relativePath');
       await destFile.parent.create(recursive: true);
-      await _copyAssetToFile(asset, destFile);
-      print('[LLM]   done: $relativePath');
+      try {
+        await _copyAssetToFile(asset, destFile);
+        print('[LLM]   done: $relativePath');
+      } catch (e) {
+        print('[LLM]   error copying $relativePath: $e');
+      }
     }
 
     final copied = await dir.list().toList();
