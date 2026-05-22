@@ -192,7 +192,9 @@ class RustChatRepository implements ChatRepository {
         .where((w) => w.isNotEmpty)
         .toList();
     if (words.isEmpty) return name;
-    return words
+    // Keep at most 2 words so the label doesn't overflow the dropdown
+    final keep = words.length > 2 ? words.take(2).toList() : words;
+    return keep
         .map((w) => '${w[0].toUpperCase()}${w.substring(1)}')
         .join(' ');
   }
@@ -354,32 +356,18 @@ class RustChatRepository implements ChatRepository {
   }
 
   /// Finds ONNX variant files and tokenizer in a model directory.
-  /// Supports both flat layout (.onnx in model root) and onnx/ subdirectory layout.
+  /// Flat layout only (no onnx/ subdirectory).
   /// Returns (variantFiles, tokenizerPath).
   Future<(List<File>, String)> _resolveOnnxVariants(Directory modelDir) async {
-    final List<File> rootOnnx = (await modelDir.list().toList())
+    final variants = (await modelDir.list().toList())
         .whereType<File>()
         .where((f) => f.path.endsWith('.onnx'))
-        .toList();
-    final onnxDir = Directory('${modelDir.path}/onnx');
-    final List<File> onnxOnnx = (await onnxDir.exists())
-        ? (await onnxDir.list().toList())
-            .whereType<File>()
-            .where((f) => f.path.endsWith('.onnx'))
-            .toList()
-        : [];
-
-    final variants = (onnxOnnx.isNotEmpty ? onnxOnnx : rootOnnx)
+        .toList()
       ..sort((a, b) => a.path.compareTo(b.path));
 
-    final hasOnnxDir = onnxOnnx.isNotEmpty;
-    final usedDir = hasOnnxDir ? onnxDir : modelDir;
-    final onnxTokFile = '${usedDir.path}/tokenizer.json';
-    final rootTokFile = '${modelDir.path}/tokenizer.json';
-    final tokenizerFile =
-        (await File(onnxTokFile).exists()) ? onnxTokFile : rootTokFile;
+    final tokenizerFile = '${modelDir.path}/tokenizer.json';
 
-    print('[LLM]   ${variants.length} .onnx files found in ${hasOnnxDir ? "onnx/" : "root"}');
+    print('[LLM]   ${variants.length} .onnx files found');
     print('[LLM]   tokenizer: $tokenizerFile exists=${await File(tokenizerFile).exists()}');
 
     return (variants, tokenizerFile);
@@ -473,20 +461,8 @@ class RustChatRepository implements ChatRepository {
 
       final (variantFiles, tokenizerFile) = await _resolveOnnxVariants(modelDir);
 
-      // Map bundle paths to support dir paths so ORT loads from regular filesystem (not iOS framework)
-      List<File> resolvedVariants;
-      String resolvedTokenizer;
-      if (bundleDir != null && modelDir.path.startsWith(bundleDir)) {
-        resolvedVariants = variantFiles.map((f) =>
-          File(f.path.replaceFirst(bundleDir, '${dir.path}/'))).toList();
-        resolvedTokenizer = tokenizerFile.replaceFirst(bundleDir, '${dir.path}/');
-      } else {
-        resolvedVariants = variantFiles;
-        resolvedTokenizer = tokenizerFile;
-      }
-
-      final half = (resolvedVariants.length + 1) ~/ 2;
-      for (final f in resolvedVariants) {
+      final half = (variantFiles.length + 1) ~/ 2;
+      for (final f in variantFiles) {
         final variant = _variantLabel(f.path.split('/').last);
         final isSmart = index < half;
         index += 1;
@@ -498,7 +474,7 @@ class RustChatRepository implements ChatRepository {
           groupLabel: modelLabel,
           isSmart: isSmart,
           path: f.path,
-          tokenizerPath: resolvedTokenizer,
+          tokenizerPath: tokenizerFile,
           index: index,
           numLayers: numLayers,
           numKvHeads: numKvHeads,
