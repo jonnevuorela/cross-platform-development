@@ -84,15 +84,11 @@ class RustChatRepository implements ChatRepository {
 
   Future<String> _computeCacheKey() async {
     final manifest = await AssetManifest.loadFromAssetBundle(rootBundle);
-    final bundleDir = _bundleModelsDir();
     final assets = manifest
         .listAssets()
         .where((a) => a.startsWith(_modelsAssetPrefix))
         // Exclude hidden files (like .DS_Store) that macOS creates non-deterministically
         .where((a) => !a.split('/').any((p) => p.startsWith('.')))
-        .where((a) => bundleDir != null
-            ? !a.endsWith('.onnx') && !a.endsWith('.onnx_data')
-            : true)
         .toList()
       ..sort();
     return assets.join('|');
@@ -140,9 +136,17 @@ class RustChatRepository implements ChatRepository {
         continue;
       }
 
-      // On iOS/macOS, model binaries are used directly from the app bundle
+      // iOS/macOS: copy .onnx/.onnx_data via File.copy() to avoid OOM from rootBundle.load()
       if (hasBundle && (relativePath.endsWith('.onnx') || relativePath.endsWith('.onnx_data'))) {
-        print('[LLM]   skip (bundle): $relativePath');
+        final destFile = File('${dir.path}/$relativePath');
+        await destFile.parent.create(recursive: true);
+        final sourceFile = File('$bundleDir/$relativePath');
+        try {
+          await sourceFile.copy(destFile.path);
+          print('[LLM]   copy (file copy): $relativePath');
+        } catch (e) {
+          print('[LLM]   error copying $relativePath: $e');
+        }
         continue;
       }
 
@@ -385,9 +389,8 @@ class RustChatRepository implements ChatRepository {
   Future<List<ModelInfo>> availableModels() async {
     await _ensureBundledModels();
     final dir = await _modelsDir();
-    final bundleDir = _bundleModelsDir();
 
-    // Collect model directories from support dir
+    // Collect model directories from support dir (bundle models are copied here by _ensureBundledModels)
     final modelDirs = <Directory>[];
     {
       final entries = await dir.list().toList();
@@ -398,19 +401,6 @@ class RustChatRepository implements ChatRepository {
           modelDirs.add(e);
         } else {
           print('  [FILE] ${e.path.split('/').last}');
-        }
-      }
-    }
-
-    // Scan bundle directory — prepend, bundle entries take priority
-    if (bundleDir != null) {
-      final bundleEntries = await Directory(bundleDir).list().toList();
-      for (final e in bundleEntries) {
-        if (e is Directory) {
-          final name = e.path.split('/').last;
-          modelDirs.removeWhere((d) => d.path.split('/').last == name);
-          modelDirs.insert(0, e);
-          print('[LLM]   bundle model: $name');
         }
       }
     }

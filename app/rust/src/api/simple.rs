@@ -120,6 +120,8 @@ pub fn init_model(
         );
         eprintln!("[LLM] model_path arg: {model_path}");
         eprintln!("[LLM] data_path computed: {}", data_path.display());
+        eprintln!("[LLM] model_path is_file: {}", path.is_file());
+        eprintln!("[LLM] data_path is_file: {}", data_path.is_file());
 
         ort::init().with_name("app").commit();
 
