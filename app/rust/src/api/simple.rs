@@ -20,6 +20,7 @@ struct ModelConfig {
     role_start_id: i64,
     role_end_id: i64,
     turn_end_id: i64,
+    fixed_seq_len: Option<i64>,
 }
 
 struct AppInner {
@@ -129,6 +130,8 @@ pub fn init_model(
 
         log_model_io(&session);
 
+        let fixed_seq_len = detect_fixed_seq_len(&session);
+
         let cfg = ModelConfig {
             num_layers: num_layers as usize,
             num_kv_heads,
@@ -139,6 +142,7 @@ pub fn init_model(
             role_start_id,
             role_end_id,
             turn_end_id,
+            fixed_seq_len,
         };
 
         let mut guard = lock_app();
@@ -321,6 +325,7 @@ fn run_generate(
             role_start_id: inner.cfg.role_start_id,
             role_end_id: inner.cfg.role_end_id,
             turn_end_id: inner.cfg.turn_end_id,
+            fixed_seq_len: inner.cfg.fixed_seq_len,
         };
         (tokenizer, cfg)
     };
@@ -377,6 +382,41 @@ fn run_generate(
     let mut prefix_buf = String::new();
     let mut prefix_resolved = false;
 
+    // Prefill phase: for models with fixed seq_len (e.g. GPT-2 decoder_with_past_model),
+    // feed prompt tokens one at a time to populate the KV cache
+    let prefill_done = if cfg.fixed_seq_len == Some(1) && all_ids.len() > 1 {
+        eprintln!("[LLM] prefill: {} tokens", all_ids.len());
+        for i in 0..all_ids.len() {
+            if CANCEL.load(Ordering::SeqCst) {
+                CANCEL.store(false, Ordering::SeqCst);
+                eprintln!("[LLM] prefill cancelled at token {i}");
+                return Ok(vec![]);
+            }
+
+            let input_ids = vec![all_ids[i]];
+            let past_seq_len = kv_cache.seq_len(&cfg);
+            let kv_seq_len = past_seq_len.max(1);
+
+            {
+                let mut guard = lock_app();
+                let app = guard.as_mut().ok_or_else(|| Error::new("Model unloaded during prefill"))?;
+                let session = &mut app.session;
+                let input_specs: Vec<(String, ValueType)> = session
+                    .inputs()
+                    .iter()
+                    .map(|input| (input.name().to_string(), input.dtype().clone()))
+                    .collect();
+                let inputs = build_inputs(&input_specs, &cfg, &input_ids, &kv_cache, kv_seq_len)?;
+                let outputs = Session::run(session, inputs)?;
+                let _ = extract_logits_and_kv(outputs.iter(), &mut kv_cache, &cfg)?;
+            }
+        }
+        eprintln!("[LLM] prefill done, cache seq_len={}", kv_cache.seq_len(&cfg));
+        true
+    } else {
+        false
+    };
+
     for step in 0..max_steps {
         if CANCEL.load(Ordering::SeqCst) {
             eprintln!("[LLM] generation cancelled at step {step}");
@@ -384,7 +424,9 @@ fn run_generate(
             break;
         }
 
-        let (input_ids, past_seq_len) = if step == 0 {
+        let is_first_step = step == 0 && !prefill_done;
+
+        let (input_ids, past_seq_len) = if is_first_step {
             (all_ids.clone(), 0i64)
         } else {
             let last = vec![all_ids[all_ids.len() - 1]];
@@ -658,6 +700,25 @@ fn log_model_io(session: &Session) {
         .join(", ");
     println!("[LLM] inputs: {inputs}");
     println!("[LLM] outputs: {outputs}");
+}
+
+fn detect_fixed_seq_len(session: &Session) -> Option<i64> {
+    for input in session.inputs() {
+        if input.name() != "input_ids" {
+            continue;
+        }
+        if let ValueType::Tensor { shape, .. } = input.dtype() {
+            if shape.len() >= 2 {
+                let seq_dim = shape[shape.len() - 1];
+                if seq_dim == 1 {
+                    eprintln!("[LLM] fixed seq_len=1 detected (prefill mode)");
+                    return Some(1);
+                }
+            }
+        }
+        break;
+    }
+    None
 }
 
 fn tensor_elem_type(dtype: &ValueType) -> Result<TensorElementType, Error> {

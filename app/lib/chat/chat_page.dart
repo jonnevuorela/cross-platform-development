@@ -271,8 +271,7 @@ class _ChatPageState extends State<ChatPage> {
                           ),
                         ),
                       ),
-                      SelectionArea(
-                        child: ListView.builder(
+                      ListView.builder(
                           controller: _scrollController,
                           padding: const EdgeInsets.fromLTRB(16, 16, 16, 110),
                           itemCount: state.messages.length,
@@ -314,7 +313,10 @@ class _ChatPageState extends State<ChatPage> {
                               alignment: isUser
                                   ? Alignment.centerRight
                                   : Alignment.centerLeft,
-                              child: Container(
+                              child: GestureDetector(
+                                onSecondaryTapDown: (details) => _showMessageMenu(context, index, message, details.globalPosition),
+                                onLongPressStart: (details) => _showMessageMenu(context, index, message, details.globalPosition),
+                                child: Container(
                                 margin: const EdgeInsets.symmetric(vertical: 8),
                                 padding: const EdgeInsets.all(14),
                                 constraints: const BoxConstraints(maxWidth: 420),
@@ -353,10 +355,10 @@ class _ChatPageState extends State<ChatPage> {
                                   styleSheet: mdStyle,
                                 ),
                               ),
+                            ),
                             );
                           },
                         ),
-                      ),
                       Positioned(
                         left: 16, right: 16, bottom: 16,
                         child: _ChatComposer(
@@ -388,6 +390,66 @@ class _ChatPageState extends State<ChatPage> {
       duration: const Duration(milliseconds: 250),
       curve: Curves.easeOut,
     );
+  }
+
+  void _showMessageMenu(BuildContext context, int index, ChatMessage message, Offset globalPosition) {
+    final overlay =
+        Overlay.of(context).context.findRenderObject() as RenderBox;
+
+    final entries = <PopupMenuEntry<int>>[
+      const PopupMenuItem<int>(
+        value: 0,
+        child: ListTile(
+          leading: Icon(Icons.undo),
+          title: Text('Revert to here'),
+          contentPadding: EdgeInsets.zero,
+        ),
+      ),
+      const PopupMenuItem<int>(
+        value: 1,
+        child: ListTile(
+          leading: Icon(Icons.delete_outline),
+          title: Text('Delete from here'),
+          contentPadding: EdgeInsets.zero,
+        ),
+      ),
+    ];
+
+    if (message.role == ChatRole.assistant) {
+      entries.add(
+        const PopupMenuItem<int>(
+          value: 2,
+          child: ListTile(
+            leading: Icon(Icons.refresh),
+            title: Text('Regenerate'),
+            contentPadding: EdgeInsets.zero,
+          ),
+        ),
+      );
+    }
+
+    showMenu<int>(
+      context: context,
+      position: RelativeRect.fromRect(
+        Rect.fromLTWH(globalPosition.dx, globalPosition.dy, 1, 1),
+        Offset.zero & overlay.size,
+      ),
+      items: entries,
+    ).then((value) {
+      if (value == null) return;
+      final bloc = context.read<ChatBloc>();
+      switch (value) {
+        case 0:
+          bloc.add(ChatMessageReverted(messageIndex: index));
+          break;
+        case 1:
+          bloc.add(ChatMessageDeleted(messageIndex: index));
+          break;
+        case 2:
+          bloc.add(ChatMessageRegenerateRequested(messageIndex: index));
+          break;
+      }
+    });
   }
 
   void _showSettingsSheet(BuildContext context, ChatState state) {

@@ -129,6 +129,15 @@ class RustChatRepository implements ChatRepository {
     }
   }
 
+  int _intVal(Map<String, dynamic>? cfg, List<String> keys, int defaultVal) {
+    if (cfg == null) return defaultVal;
+    for (final key in keys) {
+      final val = cfg[key] as int?;
+      if (val != null) return val;
+    }
+    return defaultVal;
+  }
+
   int _findTokenId(Map<String, dynamic>? tokCfg, String content, int defaultId) {
     if (tokCfg == null) return defaultId;
     final decoder = tokCfg['added_tokens_decoder'] as Map<String, dynamic>?;
@@ -253,17 +262,25 @@ class RustChatRepository implements ChatRepository {
       final modelLabel = _labelFromDirName(dirName);
       print('[LLM] scanning dir "$dirName" (label="$modelLabel")');
 
-      final config = await _readJsonFile('${modelDir.path}/config.json');
-      final genConfig = await _readJsonFile('${modelDir.path}/generation_config.json');
-      final tokConfig = await _readJsonFile('${modelDir.path}/tokenizer_config.json');
+      // Prefer onnx/ configs if they exist (they often have correct arch params)
+      final rootConfig = await _readJsonFile('${modelDir.path}/config.json');
+      final rootGenConfig = await _readJsonFile('${modelDir.path}/generation_config.json');
+      final rootTokConfig = await _readJsonFile('${modelDir.path}/tokenizer_config.json');
+      final onnxConfig = await _readJsonFile('${modelDir.path}/onnx/config.json');
+      final onnxGenConfig = await _readJsonFile('${modelDir.path}/onnx/generation_config.json');
+      final onnxTokConfig = await _readJsonFile('${modelDir.path}/onnx/tokenizer_config.json');
 
-      final numLayers = config?['num_hidden_layers'] as int? ?? 30;
-      final numKvHeads = config?['num_key_value_heads'] as int? ?? 3;
-      final hiddenSize = config?['hidden_size'] as int?;
-      final numAttnHeads = config?['num_attention_heads'] as int?;
-      final headDim = config?['head_dim'] as int?
-          ?? (hiddenSize != null && numAttnHeads != null ? hiddenSize ~/ numAttnHeads : 64);
-      final vocabSize = config?['vocab_size'] as int? ?? 49152;
+      final config = onnxConfig ?? rootConfig;
+      final genConfig = onnxGenConfig ?? rootGenConfig;
+      final tokConfig = onnxTokConfig ?? rootTokConfig;
+
+      // Support both HuggingFace names and GPT-2 style names
+      final numLayers = _intVal(config, ['num_hidden_layers', 'n_layer'], 30);
+      final numAttnHeads = _intVal(config, ['num_attention_heads', 'n_head'], 12);
+      final numKvHeads = _intVal(config, ['num_key_value_heads'], numAttnHeads);
+      final hiddenSize = _intVal(config, ['hidden_size', 'n_embd'], 768);
+      final headDim = _intVal(config, ['head_dim'], hiddenSize ~/ numAttnHeads);
+      final vocabSize = _intVal(config, ['vocab_size'], 49152);
 
       final genEos = genConfig?['eos_token_id'];
       final eosTokenId = genEos is List ? genEos.first as int : (genEos as int?);
@@ -281,7 +298,7 @@ class RustChatRepository implements ChatRepository {
         defaultTurnEnd: 2,
       );
 
-      print('[LLM]   arch: layers=$numLayers kv=$numKvHeads head=$headDim vocab=$vocabSize');
+      print('[LLM]   arch: layers=$numLayers kv=$numKvHeads($numAttnHeads) head=$headDim hidden=$hiddenSize vocab=$vocabSize');
       print('[LLM]   tokens: eos=$resolvedEos bos=$resolvedBos'
           ' roleStart=$roleStartId roleEnd=$roleEndId turnEnd=$turnEndId');
 
@@ -299,7 +316,10 @@ class RustChatRepository implements ChatRepository {
         ..sort((a, b) => a.path.compareTo(b.path));
       print('[LLM]   ${variantFiles.length} .onnx files found in onnx/');
 
-      final tokenizerFile = '${modelDir.path}/tokenizer.json';
+      // Prefer onnx/tokenizer.json — some exports put variant-specific tokenizers there
+      final onnxTokFile = '${modelDir.path}/onnx/tokenizer.json';
+      final rootTokFile = '${modelDir.path}/tokenizer.json';
+      final tokenizerFile = (await File(onnxTokFile).exists()) ? onnxTokFile : rootTokFile;
       final tokenizerExists = await File(tokenizerFile).exists();
       print('[LLM]   tokenizer: $tokenizerFile exists=$tokenizerExists');
 
@@ -311,7 +331,7 @@ class RustChatRepository implements ChatRepository {
         print('[LLM]   → variant="$variant" smart=$isSmart path=${f.path}');
         models.add(ModelInfo(
           id: '$dirName/${f.path.split('/').last}',
-          label: '$modelLabel ($variant)',
+          label: variantFiles.length == 1 ? modelLabel : '$modelLabel ($variant)',
           groupLabel: modelLabel,
           isSmart: isSmart,
           path: f.path,
