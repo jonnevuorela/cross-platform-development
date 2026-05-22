@@ -1,6 +1,7 @@
 use crate::frb_generated::StreamSink;
 use half::f16;
 use ort::{
+    ep,
     session::{builder::GraphOptimizationLevel, Session},
     value::{Tensor, TensorElementType, ValueType},
     Error,
@@ -126,6 +127,9 @@ pub fn init_model(
             .with_inter_threads(1)?
             .with_memory_pattern(false)?
             .with_prepacking(false)?
+            .with_execution_providers([ep::CoreML::default()
+                .with_compute_units(ep::coreml::ComputeUnits::CPUAndNeuralEngine)
+                .build()])?
             .commit_from_file(&model_path)?;
 
         log_model_io(&session);

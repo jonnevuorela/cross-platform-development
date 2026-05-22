@@ -16,6 +16,7 @@ class ModelInfo {
     required this.roleStartId,
     required this.roleEndId,
     required this.turnEndId,
+    this.epLabel,
   });
 
   final String id;
@@ -34,6 +35,7 @@ class ModelInfo {
   final int roleStartId;
   final int roleEndId;
   final int turnEndId;
+  final String? epLabel;
 
   @override
   bool operator ==(Object other) {

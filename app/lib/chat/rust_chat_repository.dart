@@ -474,6 +474,7 @@ class RustChatRepository implements ChatRepository {
         final isSmart = index < half;
         index += 1;
         print('[LLM]   → variant="$variant" smart=$isSmart path=${f.path}');
+        final ep = Platform.isIOS || Platform.isMacOS ? 'ANE' : 'CPU';
         models.add(ModelInfo(
           id: '$dirName/${f.path.split('/').last}',
           label: variantFiles.length == 1 ? modelLabel : '$modelLabel ($variant)',
@@ -491,6 +492,7 @@ class RustChatRepository implements ChatRepository {
           roleStartId: roleStartId,
           roleEndId: roleEndId,
           turnEndId: turnEndId,
+          epLabel: ep,
         ));
       }
     }
